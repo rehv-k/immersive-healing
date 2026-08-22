@@ -2,8 +2,9 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; background: #000; color: #e8e2d8; font-family: system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; overflow: hidden; }
 #gl { position: fixed; inset: 0; display: block; }
+/* pointer-events:none inherits to children; interactive parts opt back in with `auto`.
+   (No `#overlay > *` rule — its ID specificity would defeat the .visible overrides.) */
 #overlay { position: fixed; inset: 0; pointer-events: none; }
-#overlay > * { pointer-events: none; }
 
 #fade { position: fixed; inset: 0; background: #000; opacity: 1; transition: opacity 0.7s ease; pointer-events: none; z-index: 50; }
 #fade.clear { opacity: 0; }
