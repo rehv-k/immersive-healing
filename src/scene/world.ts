@@ -85,9 +85,13 @@ export const CORRIDOR_HEIGHT = 4.2;
 export const HALL_WIDTH = 44;
 export const HALL_DEPTH = 30;
 export const HALL_HEIGHT = 18;
-export const SCREEN_WIDTH = 30;
+export const SCREEN_WIDTH = 30; // (legacy flat-screen constant — video mode aspect)
 export const SCREEN_HEIGHT = 12.5;
 export const EYE_HEIGHT = 1.65;
+// v4 (사용자 결정): 스크린은 단일 평면이 아니라 입구를 제외한 홀 벽면 전체(ㄷ자+뒷벽
+// 세그먼트) — 직교 벽면 그대로, 원통 곡면 아님. 파노라마는 벽 둘레를 따라 이어진다.
+export const BAND_BOTTOM = 0.5; // screen band vertical extent on the walls
+export const BAND_TOP = 14.0;
 
 export interface WorldAnchors {
   spawnCorridor: Vector3;
@@ -97,16 +101,29 @@ export interface WorldAnchors {
   viewingMaxDistance: number;
 }
 
+/** One wall-screen segment of the surrounding panorama (SRS-SCN v4).
+ *  Pano distance for a world point P: dot(P.xz, dir) + base — continuous across walls. */
+export interface ScreenSurface {
+  mesh: Mesh;
+  dir: [number, number]; // path direction in xz
+  base: number;
+  isFront: boolean;
+}
+
 export interface World {
   root: Group;
   anchors: WorldAnchors;
   walkables: Box3[];
   /** Solid obstacles inside walkable areas (columns, benches). */
   obstacles: Box3[];
+  /** Front (main) screen — video target, positional-audio anchor, spill sampling. */
   screenMesh: Mesh;
+  /** All wall-screen segments incl. the front, with panorama mapping. */
+  screenSurfaces: ScreenSurface[];
+  /** Total panorama path length + sun position along it (metres). */
+  panorama: { totalLen: number; sunDist: number; bandBottom: number; bandHeight: number };
   spillLights: PointLight[];
   setBgAnimation(level: number): void;
-  /** Per-frame animation (dust drift) — called from the main loop. */
   update(dt: number): void;
 }
 
@@ -233,17 +250,12 @@ export function buildWorld(scene: Scene): World {
   addBox(0.8, CORRIDOR_HEIGHT + 1.2, 1.2, doorHalf + 0.4, (CORRIDOR_HEIGHT + 1.2) / 2, hallZ0, columnMat, true);
   addBox(doorHalf * 2 + 1.6, 0.8, 1.2, 0, CORRIDOR_HEIGHT + 1.0, hallZ0, columnMat);
 
-  // Colonnade along both side walls — vertical rhythm and scale.
+  // Colonnade along both side walls — columns silhouette against the glowing wall
+  // screens behind them, giving strong depth. (Wall sconces removed — walls are screens.)
   for (let i = 0; i < 5; i++) {
     const z = hallZ0 - 4 - i * 5.5;
     addBox(1.1, HALL_HEIGHT, 1.1, -hw + 2.2, HALL_HEIGHT / 2, z, columnMat, true);
     addBox(1.1, HALL_HEIGHT, 1.1, hw - 2.2, HALL_HEIGHT / 2, z, columnMat, true);
-    // Wall sconces between columns — dim warm points climbing the walls.
-    const sconceL = new PointLight(0xcc8855, 0.35, 10, 2);
-    sconceL.position.set(-hw + 1.2, HALL_HEIGHT * 0.55, z + 2.7);
-    const sconceR = sconceL.clone();
-    sconceR.position.x = hw - 1.2;
-    root.add(sconceL, sconceR);
   }
 
   // Ceiling beams — coffered depth overhead.
@@ -263,18 +275,90 @@ export function buildWorld(scene: Scene): World {
     addBox(4.6, 0.45, 1.1, bx, 0.225, bz, benchMat, true);
   }
 
-  // ---------------- Screen ----------------
-  const screenMesh = new Mesh(
-    new PlaneGeometry(SCREEN_WIDTH, SCREEN_HEIGHT),
-    new MeshStandardMaterial({ color: 0x000000, roughness: 1 }),
+  // ---------------- Surrounding wall screens (v4 — 사용자 결정) ----------------
+  // Panorama path (clockwise from the door's right edge, viewer inside):
+  //   backR → right wall → front wall → left wall → backL. Door stays open.
+  const bandH = BAND_TOP - BAND_BOTTOM;
+  const bandY = BAND_BOTTOM + bandH / 2;
+  const inset = 0.18; // screens sit just inside the structural walls
+  const backSeg = hw - doorHalf;
+  const sideLen = HALL_DEPTH;
+  const frontLen = HALL_WIDTH;
+  const totalLen = backSeg * 2 + sideLen * 2 + frontLen;
+  const sunDist = backSeg + sideLen + frontLen / 2;
+
+  const placeholderMat = (): MeshStandardMaterial =>
+    new MeshStandardMaterial({ color: 0x000000, roughness: 1 });
+
+  const screenSurfaces: ScreenSurface[] = [];
+  const addScreen = (
+    w: number,
+    pos: Vector3,
+    rotY: number,
+    dir: [number, number],
+    pathStart: number,
+    edgeXZ: [number, number],
+    isFront = false,
+  ): Mesh => {
+    const m = new Mesh(new PlaneGeometry(w, bandH), placeholderMat());
+    m.position.copy(pos);
+    m.rotation.y = rotY;
+    m.name = isFront ? 'SCREEN' : 'SCREEN_SIDE';
+    root.add(m);
+    const base = pathStart - (edgeXZ[0] * dir[0] + edgeXZ[1] * dir[1]);
+    screenSurfaces.push({ mesh: m, dir, base, isFront });
+    return m;
+  };
+
+  // back-right segment (door edge → right corner), inner face looks -z
+  addScreen(
+    backSeg,
+    new Vector3(doorHalf + backSeg / 2, bandY, hallZ0 - inset),
+    Math.PI,
+    [1, 0],
+    0,
+    [doorHalf, hallZ0],
   );
-  screenMesh.name = 'SCREEN';
-  // Screen bottom at 1.2m (was 2.2) — horizon sits nearer eye level, less craning up.
-  screenMesh.position.set(0, SCREEN_HEIGHT / 2 + 1.2, screenZ);
-  root.add(screenMesh);
-  const frame = new Mesh(new BoxGeometry(SCREEN_WIDTH + 1.4, SCREEN_HEIGHT + 1.4, 0.25), darkMat);
-  frame.position.set(0, SCREEN_HEIGHT / 2 + 1.2, screenZ - 0.15);
-  root.add(frame);
+  // right wall (back → front), inner face looks -x
+  addScreen(
+    sideLen,
+    new Vector3(hw - inset, bandY, hallZc),
+    -Math.PI / 2,
+    [0, -1],
+    backSeg,
+    [hw, hallZ0],
+  );
+  // front wall (right → left), inner face looks +z — the main/video screen
+  const screenMesh = addScreen(
+    frontLen,
+    new Vector3(0, bandY, hallZ0 - HALL_DEPTH + inset),
+    0,
+    [-1, 0],
+    backSeg + sideLen,
+    [hw, hallZ0 - HALL_DEPTH],
+    true,
+  );
+  // left wall (front → back), inner face looks +x
+  addScreen(
+    sideLen,
+    new Vector3(-hw + inset, bandY, hallZc),
+    Math.PI / 2,
+    [0, 1],
+    backSeg + sideLen + frontLen,
+    [-hw, hallZ0 - HALL_DEPTH],
+  );
+  // back-left segment (left corner → door edge), inner face looks -z
+  addScreen(
+    backSeg,
+    new Vector3(-(doorHalf + backSeg / 2), bandY, hallZ0 - inset),
+    Math.PI,
+    [1, 0],
+    backSeg + sideLen + frontLen + sideLen,
+    [-hw, hallZ0],
+  );
+
+  // Thin dark sill under the band so the screens read as installed surfaces.
+  addBox(HALL_WIDTH, BAND_BOTTOM, 0.25, 0, BAND_BOTTOM / 2, hallZ0 - HALL_DEPTH + 0.3, darkMat);
 
   // ---------------- Lighting ----------------
   root.add(new AmbientLight(0x241a12, 0.8));
@@ -355,6 +439,8 @@ export function buildWorld(scene: Scene): World {
     walkables: [walkCorridor, walkHall],
     obstacles,
     screenMesh,
+    screenSurfaces,
+    panorama: { totalLen, sunDist, bandBottom: BAND_BOTTOM, bandHeight: bandH },
     spillLights,
     setBgAnimation(level: number): void {
       bgLevel = level;

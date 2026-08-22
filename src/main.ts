@@ -94,7 +94,7 @@ function boot(): void {
   const qc = new QualityController((preset, scale) => bundle.setPreset(preset, scale));
   // Animated procedural sunset is the default until real footage is adopted
   // (user licensing decision); `?video` exercises the synthetic-video pipeline.
-  const screen = new ScreenPlayer(world.screenMesh, world.spillLights, '1080p', {
+  const screen = new ScreenPlayer(world.screenSurfaces, world.panorama, world.spillLights, '1080p', {
     preferVideo: new URLSearchParams(location.search).has('video'),
   });
 

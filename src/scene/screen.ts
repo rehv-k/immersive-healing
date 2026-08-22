@@ -1,6 +1,8 @@
-// scene/screen — sunset video pipeline (SRS-VID-1~7).
-// Dual <video> A/B swap with shader crossfade; rVFC-gated texture updates (with fallback);
-// cascading rendition fallback; procedural sunset shader when no media is available.
+// scene/screen — surrounding wall-screen panorama + sunset pipeline (SRS-VID, v4).
+// The hall's walls (minus the entrance) are all screen surfaces; the procedural sunset
+// is computed in WORLD space along the wall-path, so sky, clouds and sea continue
+// seamlessly across the corners (사용자 결정: 직교 벽면 랩어라운드, 원통 아님).
+// Video mode (?video): the front wall plays the file; side walls stay procedural.
 
 import {
   LinearFilter,
@@ -11,29 +13,44 @@ import {
   VideoTexture,
 } from 'three';
 import type { Rendition } from '../types';
+import type { ScreenSurface } from './world';
 import { store } from '../core/store';
 import { stepDown } from './renditionSelect';
 
-const SWAP_TRIGGER_S = 0.5; // remaining time that arms the swap (SRS-VID-3 v1.1)
-const SWAP_RAMP_S = 0.25; // uMix ramp — 60% of trigger margin
+const SWAP_TRIGGER_S = 0.5;
+const SWAP_RAMP_S = 0.25;
 const WATCHDOG_S = 1.0;
 const STALL_TIMEOUT_MS = 5000;
 const AVG_COLOR_INTERVAL_MS = 250;
 
-// Manual sRGB decode in-shader: textures are tagged NoColorSpace and decoded here so the
-// single end-of-pipeline tone mapping stays correct (SRS-SCN-11 / V8).
-// The procedural sunset is a living scene: drifting cloud bands, shimmering sea with a
-// sun glitter path, slow warm breathing. All motion is slow and flash-free (sensory safety).
+const VERT = /* glsl */ `
+  varying vec2 vUv;
+  varying vec3 vWorldPos;
+  void main() {
+    vUv = uv;
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vWorldPos = wp.xyz;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+
+// World-space panorama sunset. px runs along the wall path in band-height units;
+// py runs 0..1 over the screen band. All motion slow and flash-free.
 const FRAG = /* glsl */ `
   uniform sampler2D texA;
   uniform sampler2D texB;
   uniform float uMix;
   uniform float uProcedural;
   uniform float uTime;
+  uniform vec2 uDir;
+  uniform float uBase;
+  uniform float uBandBottom;
+  uniform float uBandH;
+  uniform float uSunDist;
   varying vec2 vUv;
+  varying vec3 vWorldPos;
 
   vec3 srgbToLinear(vec3 c) { return pow(c, vec3(2.2)); }
-
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   float noise(vec2 p) {
     vec2 i = floor(p); vec2 f = fract(p);
@@ -47,76 +64,73 @@ const FRAG = /* glsl */ `
     return v;
   }
 
-  vec3 proceduralSunset(vec2 uv, float t) {
-    float aspect = 2.4;                       // screen is 30x12.5m
-    float seaLine = 0.26;                     // horizon near viewer eye level
-    float breathe = 0.5 + 0.5 * sin(t * 0.05); // ~2min warm breathing
+  vec3 panoramaSunset(float px, float py, float t) {
+    float seaLine = 0.26;
+    float breathe = 0.5 + 0.5 * sin(t * 0.05);
+    float sunPx = uSunDist / uBandH;
 
-    // --- sky ---
     vec3 zenith  = mix(vec3(0.07, 0.10, 0.24), vec3(0.05, 0.07, 0.19), breathe);
     vec3 mid     = vec3(0.55, 0.26, 0.22);
     vec3 horizon = mix(vec3(1.05, 0.52, 0.18), vec3(0.98, 0.42, 0.16), breathe);
-    float h = smoothstep(seaLine, 1.0, uv.y);
+    // warmth falls off away from the sun along the panorama — sides go dusky
+    float away = clamp(abs(px - sunPx) / (uSunDist / uBandH), 0.0, 1.0);
+    horizon = mix(horizon, vec3(0.55, 0.25, 0.22), away * 0.55);
+    mid = mix(mid, vec3(0.30, 0.16, 0.20), away * 0.4);
+
+    float h = smoothstep(seaLine, 1.0, py);
     vec3 col = mix(horizon, mid, smoothstep(0.0, 0.45, h));
     col = mix(col, zenith, smoothstep(0.35, 1.0, h));
 
-    // --- sun: low disc + wide glow, gentle shimmer ---
-    vec2 sun = vec2(0.5, seaLine + 0.10);
-    vec2 d2 = (uv - sun) * vec2(aspect, 1.0);
+    // sun disc + glow (only meaningful near the front wall)
+    vec2 d2 = vec2(px - sunPx, py - (seaLine + 0.10));
     float d = length(d2);
     float shimmer = 1.0 + 0.03 * sin(t * 0.7);
-    col += vec3(1.0, 0.72, 0.38) * 0.85 * smoothstep(0.5, 0.0, d);            // wide glow
-    col += vec3(1.25, 0.85, 0.5) * smoothstep(0.055 * shimmer, 0.035, d);      // disc
+    col += vec3(1.0, 0.72, 0.38) * 0.85 * smoothstep(1.1, 0.0, d);
+    col += vec3(1.25, 0.85, 0.5) * smoothstep(0.13 * shimmer, 0.085, d);
 
-    // --- clouds: two drifting bands, lit from below ---
-    float drift1 = fbm(vec2(uv.x * 3.0 - t * 0.014, uv.y * 9.0));
-    float band1 = smoothstep(0.5, 0.72, drift1) * smoothstep(0.85, 0.55, uv.y) * smoothstep(seaLine + 0.05, seaLine + 0.22, uv.y);
-    vec3 cloudLit = mix(vec3(0.85, 0.42, 0.28), vec3(0.30, 0.16, 0.20), smoothstep(seaLine, 0.8, uv.y));
+    // drifting clouds — px is continuous across wall corners
+    float drift1 = fbm(vec2(px * 1.2 - t * 0.014, py * 9.0));
+    float band1 = smoothstep(0.5, 0.72, drift1) * smoothstep(0.85, 0.55, py) * smoothstep(seaLine + 0.05, seaLine + 0.22, py);
+    vec3 cloudLit = mix(vec3(0.85, 0.42, 0.28), vec3(0.30, 0.16, 0.20), smoothstep(seaLine, 0.8, py));
+    cloudLit = mix(cloudLit, cloudLit * 0.55, away);
     col = mix(col, cloudLit, band1 * 0.75);
-    float drift2 = fbm(vec2(uv.x * 5.5 + t * 0.02, uv.y * 14.0 + 5.0));
-    float band2 = smoothstep(0.55, 0.8, drift2) * smoothstep(0.95, 0.6, uv.y) * smoothstep(seaLine + 0.15, seaLine + 0.4, uv.y);
+    float drift2 = fbm(vec2(px * 2.2 + t * 0.02, py * 14.0 + 5.0));
+    float band2 = smoothstep(0.55, 0.8, drift2) * smoothstep(0.95, 0.6, py) * smoothstep(seaLine + 0.15, seaLine + 0.4, py);
     col = mix(col, cloudLit * 0.7, band2 * 0.5);
 
-    // --- sea: gradient + moving swell shading + sun glitter path ---
-    if (uv.y < seaLine) {
-      float depth = (seaLine - uv.y) / seaLine;           // 0 at horizon, 1 at bottom
-      vec3 sea = mix(vec3(0.62, 0.30, 0.16), vec3(0.06, 0.07, 0.12), smoothstep(0.0, 0.7, depth));
-      // swell bands roll toward viewer
-      float swell = noise(vec2(uv.x * 18.0, uv.y * 60.0 + t * 0.35));
+    // sea
+    if (py < seaLine) {
+      float depth = (seaLine - py) / seaLine;
+      vec3 seaNear = mix(vec3(0.62, 0.30, 0.16), vec3(0.34, 0.20, 0.18), away);
+      vec3 sea = mix(seaNear, vec3(0.06, 0.07, 0.12), smoothstep(0.0, 0.7, depth));
+      float swell = noise(vec2(px * 7.5, py * 60.0 + t * 0.35));
       sea *= 0.92 + 0.16 * swell;
-      // glitter path under the sun: sparkling highlights, denser near horizon
-      float pathW = mix(0.035, 0.16, depth);
-      float path = smoothstep(pathW, 0.0, abs(uv.x - 0.5) / aspect * 2.2);
-      float sparkle = noise(vec2(uv.x * 90.0, uv.y * 220.0 - t * 1.1));
+      float pathW = mix(0.1, 0.5, depth);
+      float path = smoothstep(pathW, 0.0, abs(px - sunPx));
+      float sparkle = noise(vec2(px * 40.0, py * 220.0 - t * 1.1));
       sparkle = smoothstep(0.72, 0.95, sparkle);
       sea += vec3(1.1, 0.72, 0.4) * path * (0.25 + 0.75 * sparkle) * (1.0 - depth * 0.7);
       col = sea;
     }
 
-    // gentle vignette so the frame edges sit into the dark hall
-    float vig = smoothstep(0.0, 0.18, uv.x) * smoothstep(1.0, 0.82, uv.x)
-              * smoothstep(0.0, 0.12, uv.y) * smoothstep(1.0, 0.9, uv.y);
-    return col * mix(0.75, 1.0, vig);
+    // vertical edge softening only (horizontal vignette would seam the corners)
+    float vig = smoothstep(0.0, 0.1, py) * smoothstep(1.0, 0.92, py);
+    return col * mix(0.8, 1.0, vig);
   }
 
   void main() {
     vec3 color;
     if (uProcedural > 0.5) {
-      color = proceduralSunset(vUv, uTime);
+      float pd = dot(vWorldPos.xz, uDir) + uBase;
+      float px = pd / uBandH;
+      float py = clamp((vWorldPos.y - uBandBottom) / uBandH, 0.0, 1.0);
+      color = panoramaSunset(px, py, uTime);
     } else {
       vec3 a = srgbToLinear(texture2D(texA, vUv).rgb);
       vec3 b = srgbToLinear(texture2D(texB, vUv).rgb);
       color = mix(a, b, uMix);
     }
-    gl_FragColor = vec4(color * 1.6, 1.0); // emissive lift so bloom threshold catches it
-  }
-`;
-
-const VERT = /* glsl */ `
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    gl_FragColor = vec4(color * 1.6, 1.0);
   }
 `;
 
@@ -126,12 +140,19 @@ interface VideoSlot {
   rvfcId: number | null;
 }
 
+interface Pano {
+  totalLen: number;
+  sunDist: number;
+  bandBottom: number;
+  bandHeight: number;
+}
+
 export class ScreenPlayer {
-  private mesh: Mesh;
-  private material: ShaderMaterial;
+  private materials: ShaderMaterial[] = [];
+  private frontMaterial: ShaderMaterial;
   private spillLights: PointLight[];
   private slots: [VideoSlot, VideoSlot] | null = null;
-  private active = 0; // index into slots
+  private active = 0;
   private mix = 0;
   private swapping = false;
   private lastRvfcAt = 0;
@@ -145,42 +166,49 @@ export class ScreenPlayer {
   private rvfcSupported = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
   private stallTimer: ReturnType<typeof setTimeout> | null = null;
   private mediaBase: string;
-
   private preferVideo: boolean;
 
   constructor(
-    mesh: Mesh,
+    surfaces: ScreenSurface[],
+    pano: Pano,
     spillLights: PointLight[],
     rendition: Rendition,
     opts: { mediaBase?: string; preferVideo?: boolean } = {},
   ) {
-    this.mesh = mesh;
     this.spillLights = spillLights;
     this.rendition = rendition;
     this.mediaBase = opts.mediaBase ?? '/media';
-    // Until real footage is adopted (user licensing decision), the animated procedural
-    // sunset is the default visual; `?video` forces the (synthetic) video pipeline.
-    this.preferVideo = opts.preferVideo ?? true;
-    this.material = new ShaderMaterial({
-      uniforms: {
-        texA: { value: null },
-        texB: { value: null },
-        uMix: { value: 0 },
-        uProcedural: { value: 0 },
-        uTime: { value: 0 },
-      },
-      vertexShader: VERT,
-      fragmentShader: FRAG,
-    });
-    mesh.material = this.material;
+    this.preferVideo = opts.preferVideo ?? false;
+
+    let front: ShaderMaterial | null = null;
+    for (const s of surfaces) {
+      const mat = new ShaderMaterial({
+        uniforms: {
+          texA: { value: null },
+          texB: { value: null },
+          uMix: { value: 0 },
+          uProcedural: { value: 1 },
+          uTime: { value: 0 },
+          uDir: { value: s.dir },
+          uBase: { value: s.base },
+          uBandBottom: { value: pano.bandBottom },
+          uBandH: { value: pano.bandHeight },
+          uSunDist: { value: pano.sunDist },
+        },
+        vertexShader: VERT,
+        fragmentShader: FRAG,
+      });
+      (s.mesh as Mesh).material = mat;
+      this.materials.push(mat);
+      if (s.isFront) front = mat;
+    }
+    if (!front) throw new Error('screen: no front surface');
+    this.frontMaterial = front;
+    this.procedural = true;
+
     this.avgCanvas = document.createElement('canvas');
     this.avgCanvas.width = 2;
     this.avgCanvas.height = 2;
-
-    if (!this.rvfcSupported) {
-      // rVFC fallback: rAF currentTime polling + one preset step down (SRS-VID-4).
-      if (import.meta.env.DEV) console.warn('[screen] rVFC unsupported — fallback gating');
-    }
   }
 
   get currentRendition(): Rendition {
@@ -202,14 +230,14 @@ export class ScreenPlayer {
     el.crossOrigin = 'anonymous';
     el.loop = false; // loop is owned by the swap logic (SRS-VID-2)
     const tex = new VideoTexture(el);
-    tex.colorSpace = NoColorSpace; // decoded manually in shader
+    tex.colorSpace = NoColorSpace;
     tex.minFilter = LinearFilter;
     tex.magFilter = LinearFilter;
     tex.generateMipmaps = false;
     return { el, tex, rvfcId: null };
   }
 
-  /** Prepare both slots for the chosen rendition. Resolves once A can play. */
+  /** Video applies to the FRONT wall only; side walls always run the panorama. */
   async load(): Promise<boolean> {
     if (!this.preferVideo) {
       this.enableProcedural();
@@ -225,35 +253,22 @@ export class ScreenPlayer {
 
     const ok = await new Promise<boolean>((resolve) => {
       const timeout = setTimeout(() => resolve(false), 15000);
-      a.el.addEventListener(
-        'canplay',
-        () => {
-          clearTimeout(timeout);
-          resolve(true);
-        },
-        { once: true },
-      );
-      a.el.addEventListener(
-        'error',
-        () => {
-          clearTimeout(timeout);
-          resolve(false);
-        },
-        { once: true },
-      );
+      a.el.addEventListener('canplay', () => { clearTimeout(timeout); resolve(true); }, { once: true });
+      a.el.addEventListener('error', () => { clearTimeout(timeout); resolve(false); }, { once: true });
       a.el.load();
       b.el.load();
     });
 
     if (!ok) return this.cascade();
 
-    this.material.uniforms.texA!.value = a.tex;
-    this.material.uniforms.texB!.value = b.tex;
-    this.material.uniforms.uProcedural!.value = 0;
+    const u = this.frontMaterial.uniforms;
+    u.texA!.value = a.tex;
+    u.texB!.value = b.tex;
+    u.uProcedural!.value = 0;
     this.procedural = false;
     this.active = 0;
     this.mix = 0;
-    this.material.uniforms.uMix!.value = 0;
+    u.uMix!.value = 0;
     this.attachRvfc(0);
     this.attachRvfc(1);
     this.watchStall(a.el);
@@ -261,7 +276,6 @@ export class ScreenPlayer {
     return true;
   }
 
-  /** Cascading fallback, max down to 720p, then procedural mode (SRS-VID-6 + ERR-5). */
   private async cascade(): Promise<boolean> {
     this.blacklist.add(this.rendition);
     let next: Rendition | null = this.rendition;
@@ -286,7 +300,7 @@ export class ScreenPlayer {
 
   enableProcedural(): void {
     this.procedural = true;
-    this.material.uniforms.uProcedural!.value = 1;
+    this.frontMaterial.uniforms.uProcedural!.value = 1;
   }
 
   /** Manual quality change → rendition reload with position carry-over (SRS §6.5). */
@@ -312,18 +326,13 @@ export class ScreenPlayer {
     const a = this.slots[this.active]!;
     try {
       await a.el.play();
-    } catch {
-      /* stall watchdog handles */
-    }
-    // Warm up B (SRS-VID-3): decode a first frame then hold.
+    } catch { /* stall watchdog handles */ }
     const b = this.slots[1 - this.active]!;
     try {
       await b.el.play();
       b.el.pause();
       b.el.currentTime = 0;
-    } catch {
-      /* non-fatal */
-    }
+    } catch { /* non-fatal */ }
   }
 
   pause(): void {
@@ -332,28 +341,26 @@ export class ScreenPlayer {
     for (const s of this.slots) s.el.pause();
   }
 
-  /** Tab-return recovery (SRS-VID-7): reset ended element, resume if user hasn't paused. */
   onVisible(userPaused: boolean): void {
     if (this.procedural || !this.slots) return;
     const a = this.slots[this.active]!;
     if (a.el.ended || a.el.currentTime >= (a.el.duration || Infinity) - 0.05) {
       a.el.currentTime = 0;
       this.mix = this.active === 1 ? 1 : 0;
-      this.material.uniforms.uMix!.value = this.active === 1 ? 1 : 0;
+      this.frontMaterial.uniforms.uMix!.value = this.mix;
       this.swapping = false;
     }
     if (this.playing && !userPaused && a.el.paused) void a.el.play();
   }
 
   private attachRvfc(i: number): void {
-    if (!this.slots) return;
+    if (!this.slots || !this.rvfcSupported) return;
     const slot = this.slots[i]!;
-    if (!this.rvfcSupported) return;
     const el = slot.el as HTMLVideoElement & {
       requestVideoFrameCallback(cb: (now: number, meta: { mediaTime: number }) => void): number;
     };
     const cb = (_now: number, meta: { mediaTime: number }): void => {
-      slot.tex.needsUpdate = true; // set only — upload merges into next render (SRS §3.2-6)
+      slot.tex.needsUpdate = true;
       this.lastRvfcAt = performance.now();
       if (i === this.active && this.playing && !this.swapping) {
         const remaining = (slot.el.duration || 0) - meta.mediaTime;
@@ -368,7 +375,6 @@ export class ScreenPlayer {
     if (!this.slots || this.swapping) return;
     const b = this.slots[1 - this.active]!;
     if (b.el.readyState < 2) {
-      // B not ready — hard-cut fallback once via 'ended' (SRS-VID-7, no loop attribute).
       const a = this.slots[this.active]!;
       a.el.addEventListener(
         'ended',
@@ -386,17 +392,16 @@ export class ScreenPlayer {
     void b.el.play();
   }
 
-  /** Per-frame update from the main loop (visual ramp + fallback gating + spill color). */
   update(dt: number): void {
     this.time += dt;
+    for (const m of this.materials) m.uniforms.uTime!.value = this.time;
+
     if (this.procedural) {
-      this.material.uniforms.uTime!.value = this.time;
       this.updateSpillProcedural();
       return;
     }
     if (!this.slots) return;
 
-    // rVFC fallback gating (SRS-VID-4)
     if (!this.rvfcSupported && this.playing) {
       const a = this.slots[this.active]!;
       a.tex.needsUpdate = true;
@@ -408,12 +413,11 @@ export class ScreenPlayer {
     if (this.swapping) {
       const dir = this.active === 0 ? 1 : -1;
       this.mix = Math.min(1, Math.max(0, this.mix + (dt / SWAP_RAMP_S) * dir));
-      this.material.uniforms.uMix!.value = this.mix;
+      this.frontMaterial.uniforms.uMix!.value = this.mix;
       const done = this.active === 0 ? this.mix >= 1 : this.mix <= 0;
       if (done) this.completeSwap();
     }
 
-    // Watchdog: rVFC silent >1s while playing & visible → reset swap state (SRS-VID-7).
     if (
       this.rvfcSupported &&
       this.playing &&
@@ -430,11 +434,10 @@ export class ScreenPlayer {
     this.sampleAverageColor();
   }
 
-  /** Pause entry during ramp: complete instantly, then pause (SRS-VID-7a). */
   onPause(): void {
     if (this.swapping) {
       this.mix = this.active === 0 ? 1 : 0;
-      this.material.uniforms.uMix!.value = this.mix;
+      this.frontMaterial.uniforms.uMix!.value = this.mix;
       this.completeSwap();
     }
     this.pause();
@@ -462,7 +465,6 @@ export class ScreenPlayer {
     });
   }
 
-  // --- Spill light drive (SRS-SCN-13; CPU 2x2 sample every 250ms) ---
   private sampleAverageColor(): void {
     const now = performance.now();
     if (now - this.lastAvgAt < AVG_COLOR_INTERVAL_MS || !this.slots) return;
@@ -485,7 +487,6 @@ export class ScreenPlayer {
       const n = d.length / 4;
       this.applySpill(r / n / 255, gr / n / 255, b / n / 255);
     } catch {
-      // Tainted canvas => CORS misconfiguration (ERR-10 path)
       store.pushNotice({
         id: 'video-cors',
         kind: 'video-cors',
@@ -494,12 +495,12 @@ export class ScreenPlayer {
         at: Date.now(),
         message: '미디어 서버 설정 문제로 일부 조명 효과가 제한돼요.',
       });
-      this.lastAvgAt = Number.MAX_SAFE_INTEGER; // stop retrying
+      this.lastAvgAt = Number.MAX_SAFE_INTEGER;
     }
   }
 
   private updateSpillProcedural(): void {
-    const cycle = 0.5 + 0.5 * Math.sin(this.time * 0.02);
+    const cycle = 0.5 + 0.5 * Math.sin(this.time * 0.05);
     this.applySpill(0.9 - 0.1 * cycle, 0.45 - 0.08 * cycle, 0.2);
   }
 
