@@ -137,10 +137,23 @@ function boot(): void {
     msUntilResumeAllowed: () => inputSession.msUntilResumeAllowed(),
   });
 
+  let enterBusy = false; // guards button spam while the async enter sequence runs
   createGate(overlay, {
     async onEnter(direct: boolean): Promise<void> {
       const s = store.get();
-      if (!s.sys.corridorReady) return;
+      if (!s.sys.corridorReady || enterBusy) return;
+      enterBusy = true;
+      try {
+        await doEnter(direct, s);
+      } finally {
+        enterBusy = false;
+      }
+    },
+    onFullscreenToggled: (v) => inputSession.setFullscreenWanted(v),
+  });
+
+  async function doEnter(direct: boolean, s: ReturnType<typeof store.get>): Promise<void> {
+    {
       const audioOk = await graph.resume();
       if (!audioOk) {
         store.pushNotice({
@@ -169,9 +182,8 @@ function boot(): void {
       fadeIn();
       sceneMachine.setTransitioning(false);
       player.setEnabled(true);
-    },
-    onFullscreenToggled: (v) => inputSession.setFullscreenWanted(v),
-  });
+    }
+  }
 
   const debug = createDebugOverlay(overlay, {
     renderer: bundle.renderer,
@@ -188,6 +200,12 @@ function boot(): void {
     });
   });
   sceneMachine.onEnter('hall', (from) => {
+    // Skip (or any entry while still physically outside the hall) lands at SPAWN_hall
+    // (PRD FR-23: skip teleports to the hall entrance).
+    const p = player.position;
+    if (!world.anchors.boundsViewing.containsPoint(p)) {
+      player.teleport(world.anchors.spawnHall.clone().setY(EYE_HEIGHT), 0);
+    }
     if (from === 'gate') {
       ambience.start();
       void screen.load().then(() => void screen.play());

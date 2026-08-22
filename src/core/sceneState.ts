@@ -63,10 +63,14 @@ class SceneStateMachine {
     this.exitHooks.set(state, list);
   }
 
-  /** Transition with guard; ignored (dev-warn) when not allowed (SRS-COR-30). */
+  /**
+   * Transition with matrix guard; ignored (dev-warn) when not allowed (SRS-COR-30).
+   * NOTE: `transitioning` does NOT block this method — the fade sequence itself sets
+   * that flag before transitioning (self-deadlock otherwise). External requests
+   * (skip/exit actions) are guarded against `transitioning` in handle() instead.
+   */
   transition(to: SceneState): boolean {
     const s = store.get().scene;
-    if (s.transitioning) return false; // requests during a transition are dropped, not queued
     if (!canTransition(s.state, to)) {
       if (import.meta.env.DEV) console.warn(`[scene] blocked transition ${s.state} -> ${to}`);
       return false;
@@ -141,13 +145,17 @@ class SceneStateMachine {
         // Handled in main via wiring; here we only validate state.
         break;
       case 'skipCorridor':
-        if (state.scene.state === 'corridor') this.transition('hall');
+        // External requests during a transition are dropped, not queued (SRS-COR-30).
+        if (state.scene.state === 'corridor' && !state.scene.transitioning) this.transition('hall');
         break;
       case 'pauseResume':
         // resume path: inputSession re-requests pointer lock; exitPaused on lock success.
         break;
       case 'exitRequested':
-        if (state.scene.state === 'corridor' || state.scene.state === 'hall') {
+        if (
+          (state.scene.state === 'corridor' || state.scene.state === 'hall') &&
+          !state.scene.transitioning
+        ) {
           this.exitPaused();
           this.transition('exiting');
         }
