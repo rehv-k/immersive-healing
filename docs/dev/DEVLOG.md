@@ -12,6 +12,12 @@
 - 전 모듈 구현: core(store/settings/sceneState/inputSession) · scene(renderer/world/player/screen/quality + 순수 로직 renditionSelect/adaptation) · audio(graph 3버스/ambience 다층 합성 루프/positional HRTF) · ui(gate/settings/pause/credits/unsupported/hud/debugOverlay) · analytics(no-op) · scripts(check-arch/size/licenses, gen-test-media).
 - **검증 통과**: tsc strict 0오류 / Vitest 24개 전부 통과(설정 클램프·전이 매트릭스 전수·렌디션 선택·적응 히스테리시스) / check-arch·check-licenses OK / 프로덕션 빌드 **gzip 218.8KB ≤ 300KB(NFR-8)** / 브라우저 실기: 게이트 렌더·inert 패널 격리·gate→corridor→hall→pause→exiting→gate 상태·UI 동기화 E2E 확인·AudioContext running·720p 영상 canplay·절차 셰이더 폴백 및 토스트 동작 확인.
 
+### 사용자 피드백 반영 (2026-08-22 저녁)
+- **버그 2건 수정**: ① 오버레이 버튼 전체 클릭 불가(CSS ID 특이도) ② 입장 교착(transitioning 플래그 자기충돌) + 스킵 순간이동 누락 + 입장 시 시선 방향 반전.
+- **[제품 결정 변경] 소리는 탭을 볼 때만** — 백그라운드 오디오 지속(구 FR-44/R-7) 폐기, visibilityBus 게인 페이드로 구현. RFP·PRD·SRS·CLAUDE.md 역반영 완료.
+- **스크린 비주얼 개선**: 합성 테스트 영상이 사실상 정지 화면이라는 지적 → 눈에 띄게 움직이는 절차 생성 일몰 셰이더(구름 드리프트·바다 스웰·태양 글리터 경로·느린 워밍 브리딩)를 **기본 모드**로 전환. 영상 파이프라인은 `?video`로 테스트 가능 — 실제 영상 소스 채택 시 기본 복귀.
+- **공간 웅장함 패스(플레이스홀더 v2)**: 열주 콜로네이드(충돌 포함)·천장 보·복도 리브·입구 포탈·관람 벤치·안개(FogExp2)·빛 속 먼지 입자 500(배경 애니메이션 설정과 연동). 정식 아트는 여전히 M1.
+
 ### 문서 역반영 (코드 우선 판단 — SRS 반영 필요)
 1. **SRS-SCN-12**: `SelectiveBloomEffect` 대신 **휘도 임계 BloomEffect**(threshold 0.85 — 발광 스크린만 통과) 채택. 동일 목적을 더 낮은 비용·단순한 구성으로 달성. → SRS에 "또는 휘도 임계 기반 등가 구현 허용" 문구 반영 필요.
 2. **SRS-SCN-13**: 스필 라이트 평균색을 GPU 다운샘플+fence 비동기 읽기 대신 **2×2 캔버스 drawImage CPU 샘플(250ms 주기)** 로 구현 — 구현 단순·비용 미미, CORS 오염 감지(ERR-10)도 이 경로에서 겸함. → "등가 CPU 샘플 허용" 문구 반영 필요.

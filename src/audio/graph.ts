@@ -18,6 +18,8 @@ export class AudioGraph {
   readonly userVolumeBus: GainNode;
   readonly duckBus: GainNode;
   readonly muteBus: GainNode;
+  /** Tab-visibility mute (user decision 2026-08-22: sound only while viewing). */
+  readonly visibilityBus: GainNode;
 
   constructor() {
     this.ctx = new AudioContext();
@@ -30,13 +32,15 @@ export class AudioGraph {
     this.userVolumeBus = this.ctx.createGain();
     this.duckBus = this.ctx.createGain();
     this.muteBus = this.ctx.createGain();
+    this.visibilityBus = this.ctx.createGain();
 
     this.ambienceBus.connect(this.userVolumeBus);
     this.spatialBus.connect(this.userVolumeBus);
     this.uiBus.connect(this.userVolumeBus);
     this.userVolumeBus.connect(this.duckBus);
     this.duckBus.connect(this.muteBus);
-    this.muteBus.connect(this.ctx.destination);
+    this.muteBus.connect(this.visibilityBus);
+    this.visibilityBus.connect(this.ctx.destination);
 
     this.ambienceBus.gain.value = 0; // faded in on corridor enter
     this.spatialBus.gain.value = 1;
@@ -83,6 +87,11 @@ export class AudioGraph {
   }
   setMuted(muted: boolean): void {
     fadeTo(this.ctx, this.muteBus, muted ? 0 : 1, MUTE_SECONDS);
+  }
+  /** Sound only while the tab is visible (user decision — replaces the old
+   *  background-playback requirement; context stays running, only gain drops). */
+  setHidden(hidden: boolean): void {
+    fadeTo(this.ctx, this.visibilityBus, hidden ? 0 : 1, hidden ? 0.25 : 0.6);
   }
   fadeAmbience(target: number, seconds: number): void {
     fadeTo(this.ctx, this.ambienceBus, target, seconds);

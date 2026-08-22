@@ -121,7 +121,7 @@ RFP 요구(R-x)와의 대응을 병기. **[M0]** 표시는 프로토타입 실�
 - **FR-41** 전 소스는 OGG Vorbis/Opus의 `AudioBufferSourceNode` 루프(샘플 정확). MP3·MediaElementSource 금지. 5분급 통짜 버퍼 금지(메모리). (조사 J)
 - **FR-42** 거리 감쇠: `distanceModel = 'linear'` 명시, maxDistance는 관람 영역 최대 도달 거리보다 크게. 정위 음원은 켜둔 채 gain으로 무음화(start/stop 반복 금지 — Chrome 성능 이슈 #15422 회피). (조사 J)
 - **FR-43** 모든 음량 변화는 크로스페이드(클릭 노이즈 금지): `linearRampToValueAtTime` 이상, 등파워 필요 시 커브 스케줄. 씬 전이(복도↔상영관, 일시정지)의 믹스 전환은 상태 머신 onEnter/onExit에서 트리거. (R-17)
-- **FR-44** **백그라운드 재생**: 탭이 숨겨져도 앰비언스는 지속된다. `visibilitychange → suspend()` 코드를 넣지 않는다(널리 퍼진 안티패턴). 오디오 스케줄링은 전부 `ctx.currentTime` 기준(rAF 의존 금지). 탭 복귀 시 rAF 델타 클램핑(최대 0.1초)으로 카메라 순간이동 방지. (R-7, 조사 E·J)
+- **FR-44** **[변경 2026-08-22 — 사용자 결정, 코드 역반영]** 소리는 **탭이 보일 때만**: 탭 숨김 시 가시성 버스 게인을 0으로 페이드(0.25초), 복귀 시 복원(0.6초). `AudioContext.suspend()`는 여전히 호출하지 않는다(오디오 클럭 유지 — 게인만 조작). 오디오 스케줄링은 전부 `ctx.currentTime` 기준(rAF 의존 금지). 탭 복귀 시 rAF 델타 클램핑(최대 0.1초)으로 카메라 순간이동 방지. (R-7 변경, 조사 E·J)
 - **FR-45** 마스터 볼륨·음소거는 상시 접근 가능(일시정지 메뉴 + 단축키 M). `ctx.onstatechange`에서 running이 아니면 resume 재시도. (R-17)
 
 ### 4.5 설정·편안함 (FR-5x)

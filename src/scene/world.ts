@@ -2,15 +2,23 @@
 // DEV NOTE: real art arrives at M1 as GLB with the SRS-SCN-24 naming convention
 // (SPAWN_corridor / SPAWN_hall / TRIGGER_hallEntry / BOUNDS_viewing). This module builds the
 // same logical anchors procedurally so the rest of the app already consumes the contract.
+// v2 (사용자 피드백): colonnade, ceiling beams, corridor ribs, fog, dust motes in the light
+// beam, viewing benches, entry portal — grandeur pass on the placeholder space (R-4).
 
 import {
+  AdditiveBlending,
   AmbientLight,
   BoxGeometry,
   Box3,
+  BufferGeometry,
+  Float32BufferAttribute,
+  FogExp2,
   Group,
   Mesh,
   MeshStandardMaterial,
   PlaneGeometry,
+  Points,
+  PointsMaterial,
   PointLight,
   Scene,
   SpotLight,
@@ -32,124 +40,191 @@ export interface WorldAnchors {
   spawnHall: Vector3;
   triggerHallEntry: Box3;
   boundsViewing: Box3;
-  /** Max reachable distance inside viewing bounds — positional maxDistance basis (×1.5). */
   viewingMaxDistance: number;
 }
 
 export interface World {
   root: Group;
   anchors: WorldAnchors;
-  /** Axis-aligned walkable volumes; player position must stay inside their union. */
   walkables: Box3[];
+  /** Solid obstacles inside walkable areas (columns, benches). */
+  obstacles: Box3[];
   screenMesh: Mesh;
-  /** Point lights driven by the video average color (SRS-SCN-13 spill approximation). */
   spillLights: PointLight[];
   setBgAnimation(level: number): void;
+  /** Per-frame animation (dust drift) — called from the main loop. */
+  update(dt: number): void;
 }
 
-// Layout (z axis): corridor runs from z=0 (spawn) to z=-CORRIDOR_LENGTH (hall entry),
-// hall extends further to z = -CORRIDOR_LENGTH - HALL_DEPTH. Screen on the far hall wall.
 export function buildWorld(scene: Scene): World {
   const root = new Group();
   root.name = 'world';
 
-  const wallMat = new MeshStandardMaterial({ color: 0x14120f, roughness: 0.95, metalness: 0 });
-  const floorMat = new MeshStandardMaterial({ color: 0x0b0a09, roughness: 0.85, metalness: 0.05 });
-  const darkMat = new MeshStandardMaterial({ color: 0x080808, roughness: 1 });
+  // Warm dark fog gives the hall depth and makes light beams readable.
+  scene.fog = new FogExp2(0x0c0906, 0.014);
+
+  const wallMat = new MeshStandardMaterial({ color: 0x171310, roughness: 0.92, metalness: 0.02 });
+  const columnMat = new MeshStandardMaterial({ color: 0x1e1813, roughness: 0.85, metalness: 0.05 });
+  const floorMat = new MeshStandardMaterial({ color: 0x0c0b0a, roughness: 0.6, metalness: 0.15 });
+  const darkMat = new MeshStandardMaterial({ color: 0x090807, roughness: 1 });
+  const benchMat = new MeshStandardMaterial({ color: 0x241d16, roughness: 0.8 });
+
+  const obstacles: Box3[] = [];
 
   const addBox = (
-    w: number,
-    h: number,
-    d: number,
-    x: number,
-    y: number,
-    z: number,
+    w: number, h: number, d: number,
+    x: number, y: number, z: number,
     mat: MeshStandardMaterial,
+    solid = false,
   ): Mesh => {
     const m = new Mesh(new BoxGeometry(w, h, d), mat);
     m.position.set(x, y, z);
     root.add(m);
+    if (solid) {
+      obstacles.push(new Box3(
+        new Vector3(x - w / 2 - 0.25, 0, z - d / 2 - 0.25),
+        new Vector3(x + w / 2 + 0.25, 3, z + d / 2 + 0.25),
+      ));
+    }
     return m;
   };
 
-  const hallZ0 = -CORRIDOR_LENGTH; // hall near edge
+  const hallZ0 = -CORRIDOR_LENGTH;
   const hallZc = hallZ0 - HALL_DEPTH / 2;
+  const screenZ = hallZ0 - HALL_DEPTH + 0.35;
 
-  // --- Corridor shell (interior-facing boxes) ---
+  // ---------------- Corridor ----------------
   const cw = CORRIDOR_WIDTH / 2;
   addBox(0.3, CORRIDOR_HEIGHT, CORRIDOR_LENGTH, -cw - 0.15, CORRIDOR_HEIGHT / 2, -CORRIDOR_LENGTH / 2, wallMat);
   addBox(0.3, CORRIDOR_HEIGHT, CORRIDOR_LENGTH, cw + 0.15, CORRIDOR_HEIGHT / 2, -CORRIDOR_LENGTH / 2, wallMat);
   addBox(CORRIDOR_WIDTH + 0.6, 0.3, CORRIDOR_LENGTH, 0, CORRIDOR_HEIGHT + 0.15, -CORRIDOR_LENGTH / 2, darkMat);
   addBox(CORRIDOR_WIDTH + 0.6, 0.3, CORRIDOR_LENGTH, 0, -0.15, -CORRIDOR_LENGTH / 2, floorMat);
-  addBox(CORRIDOR_WIDTH + 0.6, CORRIDOR_HEIGHT, 0.3, 0, CORRIDOR_HEIGHT / 2, 0.15, wallMat); // back wall
+  addBox(CORRIDOR_WIDTH + 0.6, CORRIDOR_HEIGHT, 0.3, 0, CORRIDOR_HEIGHT / 2, 0.15, wallMat);
 
-  // Dim guide strips along the corridor (very low intensity — sensory safety, no flashing).
+  // Rhythmic ribs — the walk gains cadence and scale cues.
+  for (let i = 1; i <= 9; i++) {
+    const z = (-CORRIDOR_LENGTH * i) / 10;
+    addBox(0.25, CORRIDOR_HEIGHT, 0.5, -cw + 0.12, CORRIDOR_HEIGHT / 2, z, columnMat);
+    addBox(0.25, CORRIDOR_HEIGHT, 0.5, cw - 0.12, CORRIDOR_HEIGHT / 2, z, columnMat);
+    addBox(CORRIDOR_WIDTH, 0.25, 0.5, 0, CORRIDOR_HEIGHT - 0.12, z, columnMat);
+  }
+  // Low guide strips (warm, dim, steady — no flashing).
   for (let i = 1; i <= 5; i++) {
     const z = (-CORRIDOR_LENGTH * i) / 6;
-    const strip = new PointLight(0xffb37a, 0.6, 9, 2);
-    strip.position.set(0, 0.4, z);
+    const strip = new PointLight(0xffb37a, 0.5, 8, 2);
+    strip.position.set(0, 0.35, z);
     root.add(strip);
   }
 
-  // --- Hall shell ---
+  // ---------------- Hall shell ----------------
   const hw = HALL_WIDTH / 2;
   addBox(0.4, HALL_HEIGHT, HALL_DEPTH, -hw - 0.2, HALL_HEIGHT / 2, hallZc, wallMat);
   addBox(0.4, HALL_HEIGHT, HALL_DEPTH, hw + 0.2, HALL_HEIGHT / 2, hallZc, wallMat);
   addBox(HALL_WIDTH + 0.8, 0.4, HALL_DEPTH, 0, HALL_HEIGHT + 0.2, hallZc, darkMat);
   addBox(HALL_WIDTH + 0.8, 0.4, HALL_DEPTH, 0, -0.2, hallZc, floorMat);
-  // Far wall (screen wall)
   addBox(HALL_WIDTH + 0.8, HALL_HEIGHT, 0.4, 0, HALL_HEIGHT / 2, hallZ0 - HALL_DEPTH - 0.2, wallMat);
-  // Near wall segments around the corridor doorway
   const doorHalf = CORRIDOR_WIDTH / 2 + 0.2;
   const segW = (HALL_WIDTH - CORRIDOR_WIDTH) / 2;
   addBox(segW, HALL_HEIGHT, 0.4, -(doorHalf + segW / 2), HALL_HEIGHT / 2, hallZ0 + 0.2, wallMat);
   addBox(segW, HALL_HEIGHT, 0.4, doorHalf + segW / 2, HALL_HEIGHT / 2, hallZ0 + 0.2, wallMat);
-  // Lintel above the doorway
   addBox(CORRIDOR_WIDTH + 0.4, HALL_HEIGHT - CORRIDOR_HEIGHT, 0.4, 0, CORRIDOR_HEIGHT + (HALL_HEIGHT - CORRIDOR_HEIGHT) / 2, hallZ0 + 0.2, wallMat);
 
-  // --- Screen (unlit; material is swapped in by the screen module) ---
+  // Entry portal frame — the doorway reads as a threshold, heightens arrival.
+  addBox(0.8, CORRIDOR_HEIGHT + 1.2, 1.2, -(doorHalf + 0.4), (CORRIDOR_HEIGHT + 1.2) / 2, hallZ0, columnMat, true);
+  addBox(0.8, CORRIDOR_HEIGHT + 1.2, 1.2, doorHalf + 0.4, (CORRIDOR_HEIGHT + 1.2) / 2, hallZ0, columnMat, true);
+  addBox(doorHalf * 2 + 1.6, 0.8, 1.2, 0, CORRIDOR_HEIGHT + 1.0, hallZ0, columnMat);
+
+  // Colonnade along both side walls — vertical rhythm and scale.
+  for (let i = 0; i < 5; i++) {
+    const z = hallZ0 - 4 - i * 5.5;
+    addBox(1.1, HALL_HEIGHT, 1.1, -hw + 2.2, HALL_HEIGHT / 2, z, columnMat, true);
+    addBox(1.1, HALL_HEIGHT, 1.1, hw - 2.2, HALL_HEIGHT / 2, z, columnMat, true);
+    // Wall sconces between columns — dim warm points climbing the walls.
+    const sconceL = new PointLight(0xcc8855, 0.35, 10, 2);
+    sconceL.position.set(-hw + 1.2, HALL_HEIGHT * 0.55, z + 2.7);
+    const sconceR = sconceL.clone();
+    sconceR.position.x = hw - 1.2;
+    root.add(sconceL, sconceR);
+  }
+
+  // Ceiling beams — coffered depth overhead.
+  for (let i = 0; i < 6; i++) {
+    const z = hallZ0 - 2.5 - i * 5;
+    addBox(HALL_WIDTH, 0.9, 0.7, 0, HALL_HEIGHT - 0.45, z, darkMat);
+  }
+  for (const x of [-HALL_WIDTH / 3, 0, HALL_WIDTH / 3]) {
+    addBox(0.7, 0.9, HALL_DEPTH, x, HALL_HEIGHT - 0.9, hallZc, darkMat);
+  }
+
+  // Viewing benches — two staggered rows; places to settle without blocking the view.
+  for (const [bx, bz] of [
+    [-7, hallZ0 - 9], [7, hallZ0 - 9],
+    [-11, hallZ0 - 15], [0, hallZ0 - 15.5], [11, hallZ0 - 15],
+  ] as Array<[number, number]>) {
+    addBox(4.6, 0.45, 1.1, bx, 0.225, bz, benchMat, true);
+  }
+
+  // ---------------- Screen ----------------
   const screenMesh = new Mesh(
     new PlaneGeometry(SCREEN_WIDTH, SCREEN_HEIGHT),
     new MeshStandardMaterial({ color: 0x000000, roughness: 1 }),
   );
   screenMesh.name = 'SCREEN';
-  screenMesh.position.set(0, SCREEN_HEIGHT / 2 + 2.2, hallZ0 - HALL_DEPTH + 0.35);
+  screenMesh.position.set(0, SCREEN_HEIGHT / 2 + 2.2, screenZ);
   root.add(screenMesh);
-
-  // Subtle screen frame
-  const frame = new Mesh(
-    new BoxGeometry(SCREEN_WIDTH + 1.2, SCREEN_HEIGHT + 1.2, 0.2),
-    darkMat,
-  );
-  frame.position.set(0, SCREEN_HEIGHT / 2 + 2.2, hallZ0 - HALL_DEPTH + 0.2);
+  const frame = new Mesh(new BoxGeometry(SCREEN_WIDTH + 1.4, SCREEN_HEIGHT + 1.4, 0.25), darkMat);
+  frame.position.set(0, SCREEN_HEIGHT / 2 + 2.2, screenZ - 0.15);
   root.add(frame);
 
-  // --- Lighting ---
-  root.add(new AmbientLight(0x1a1610, 0.5));
-  const hallGlow = new SpotLight(0x332211, 2.0, 60, Math.PI / 3, 0.5, 1.2);
-  hallGlow.position.set(0, HALL_HEIGHT - 2, hallZc);
-  hallGlow.target.position.set(0, 0, hallZc);
+  // ---------------- Lighting ----------------
+  root.add(new AmbientLight(0x201812, 0.55));
+  const hallGlow = new SpotLight(0x40281a, 1.8, 70, Math.PI / 2.6, 0.6, 1.1);
+  hallGlow.position.set(0, HALL_HEIGHT - 2, hallZc + 6);
+  hallGlow.target.position.set(0, 2, screenZ);
   root.add(hallGlow, hallGlow.target);
 
-  // Video-driven spill lights (SRS-SCN-13): color/intensity set from video average color.
   const spillLights: PointLight[] = [];
   for (const x of [-HALL_WIDTH / 4, 0, HALL_WIDTH / 4]) {
-    const l = new PointLight(0xff8844, 0, 55, 1.6);
-    l.position.set(x, HALL_HEIGHT / 2, hallZ0 - HALL_DEPTH + 6);
+    const l = new PointLight(0xff8844, 0, 60, 1.5);
+    l.position.set(x, HALL_HEIGHT / 2, hallZ0 - HALL_DEPTH + 7);
     spillLights.push(l);
     root.add(l);
   }
 
+  // ---------------- Dust motes in the projection light ----------------
+  const DUST = 500;
+  const positions = new Float32Array(DUST * 3);
+  const speeds = new Float32Array(DUST);
+  for (let i = 0; i < DUST; i++) {
+    positions[i * 3] = (Math.random() - 0.5) * HALL_WIDTH * 0.8;
+    positions[i * 3 + 1] = Math.random() * HALL_HEIGHT * 0.85;
+    positions[i * 3 + 2] = hallZ0 - 2 - Math.random() * (HALL_DEPTH - 4);
+    speeds[i] = 0.05 + Math.random() * 0.12;
+  }
+  const dustGeo = new BufferGeometry();
+  dustGeo.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  const dustMat = new PointsMaterial({
+    color: 0xffcf9a,
+    size: 0.045,
+    transparent: true,
+    opacity: 0.35,
+    blending: AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true,
+  });
+  const dust = new Points(dustGeo, dustMat);
+  root.add(dust);
+
   scene.add(root);
 
-  // --- Anchors (SRS-SCN-24 contract) ---
+  // ---------------- Anchors & movement volumes ----------------
   const margin = 0.5;
   const walkCorridor = new Box3(
     new Vector3(-cw + margin, 0, -CORRIDOR_LENGTH - 1),
     new Vector3(cw - margin, 3, -margin),
   );
   const walkHall = new Box3(
-    new Vector3(-hw + margin, 0, hallZ0 - HALL_DEPTH + 2.5), // 2.5m standoff from screen
+    new Vector3(-hw + margin, 0, hallZ0 - HALL_DEPTH + 2.5),
     new Vector3(hw - margin, 3, hallZ0 - margin),
   );
   const boundsViewing = walkHall.clone();
@@ -167,16 +242,33 @@ export function buildWorld(scene: Scene): World {
   };
 
   let bgLevel = 0.6;
+  let dustTime = 0;
+
   return {
     root,
     anchors,
     walkables: [walkCorridor, walkHall],
+    obstacles,
     screenMesh,
     spillLights,
     setBgAnimation(level: number): void {
       bgLevel = level;
-      // Placeholder world has no particles yet; level modulates hall glow subtly.
-      hallGlow.intensity = 1.2 + bgLevel * 1.2;
+      hallGlow.intensity = 1.2 + level * 1.0;
+      dustMat.opacity = 0.1 + level * 0.4; // comfort: low bgAnimation calms the motes
+    },
+    update(dt: number): void {
+      // Slow upward drift with wrap — quiet, continuous, flash-free.
+      dustTime += dt;
+      const arr = dustGeo.getAttribute('position');
+      const speedScale = 0.4 + bgLevel * 0.8;
+      for (let i = 0; i < DUST; i++) {
+        let y = arr.getY(i) + speeds[i]! * dt * speedScale;
+        const sway = Math.sin(dustTime * 0.3 + i) * 0.02 * dt;
+        if (y > HALL_HEIGHT * 0.9) y = 0.2;
+        arr.setY(i, y);
+        arr.setX(i, arr.getX(i) + sway);
+      }
+      arr.needsUpdate = true;
     },
   };
 }

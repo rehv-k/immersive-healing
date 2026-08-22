@@ -270,7 +270,7 @@ pw = 스크린의 예상 화면 픽셀 폭
 - **SRS-AUD-4 [필수]** 정위 음원: 모노, `panner.distanceModel='linear'` 명시, `refDistance 4~8m`(v1.1 단위 명시), `rolloffFactor 1`. `maxDistance`는 **씬별 분리**(v1.1 — 감사 F 지적): 상영관 음원 = `BOUNDS_viewing` 최대 도달 거리 × 1.5, 복도 유도 음원 = 복도 길이 기준 별도 설정. 동시 활성 ≤8. 음원은 상시 재생 + 개별 GainNode 0 램프로 소거 — **근거(v1.1 정정): HRTF 컨볼루션 노드 생성/파괴 비용 회피**(구 근거였던 three.js #15422는 2018년 종결·수정이 upstream에 있음 — `isPlaying` 가드는 three.js가 이미 수행하므로 중복 요구 삭제).
 - **SRS-AUD-5 [필수]** 일시정지: `fadeTo(duckBus, 0.35, 1.0)` / 해제 `fadeTo(duckBus, 1.0, 1.0)`. 음소거: muteBus 0/1, 0.15초 램프.
 - **SRS-AUD-6 [필수]** 씬 믹스: gate→corridor 앰비언스 페이드 인 2~4초 + 유도 정위 음원 시작, corridor→hall 전체 사운드스케이프 크로스페이드 ~2초. 상태 머신 훅에서 트리거.
-- **SRS-AUD-7 [필수]** 백그라운드: `visibilitychange→suspend()` 금지. `ctx.onstatechange` — `'suspended'`는 다음 사용자 제스처에서 resume, **`'closed'`(장치 변경 등)는 컨텍스트·그래프 전체 재구성**(부트 순서 재실행 — v1.1 분리, 감사 S7). 게이트 클릭에서 최초 resume.
+- **SRS-AUD-7 [필수]** **[변경 2026-08-22 — 사용자 결정, 코드 역반영]** 소리는 탭이 보일 때만: 버스 체인 말단에 `visibilityBus`를 추가하고 `visibilitychange`에서 **게인만** 페이드(숨김 0.25초→0, 복귀 0.6초→1). `suspend()` 호출은 여전히 금지(클럭·스케줄 유지 목적은 불변). `ctx.onstatechange` — `'suspended'`는 다음 사용자 제스처에서 resume, **`'closed'`는 그래프 전체 재구성**. 게이트 클릭에서 최초 resume.
 - **SRS-AUD-8 [필수]** (v1.1 — [권장]에서 승격) `audio-base`(앰비언스 베이스+유도 음원)는 입장 가능 조건에 포함(§3.5 SCN-20).
 
 ### 3.10 ui (SRS-UI)

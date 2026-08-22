@@ -22,6 +22,7 @@ export class Player {
   private smoothBufY: number[] = [];
   private vel = new Vector3();
   private walkables: Box3[] = [];
+  private obstacles: Box3[] = [];
   private bobPhase = 0;
   private enabled = false;
   private settings: Settings | null = null;
@@ -35,8 +36,9 @@ export class Player {
     addEventListener('blur', () => this.keys.clear());
   }
 
-  setWalkables(w: Box3[]): void {
+  setWalkables(w: Box3[], obstacles: Box3[] = []): void {
     this.walkables = w;
+    this.obstacles = obstacles;
   }
 
   setEnabled(v: boolean): void {
@@ -174,6 +176,9 @@ export class Player {
   }
 
   private isWalkable(p: Vector3): boolean {
+    for (const o of this.obstacles) {
+      if (p.x >= o.min.x && p.x <= o.max.x && p.z >= o.min.z && p.z <= o.max.z) return false;
+    }
     for (const box of this.walkables) {
       if (
         p.x >= box.min.x + PLAYER_RADIUS - 0.5 &&

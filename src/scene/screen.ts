@@ -22,6 +22,8 @@ const AVG_COLOR_INTERVAL_MS = 250;
 
 // Manual sRGB decode in-shader: textures are tagged NoColorSpace and decoded here so the
 // single end-of-pipeline tone mapping stays correct (SRS-SCN-11 / V8).
+// The procedural sunset is a living scene: drifting cloud bands, shimmering sea with a
+// sun glitter path, slow warm breathing. All motion is slow and flash-free (sensory safety).
 const FRAG = /* glsl */ `
   uniform sampler2D texA;
   uniform sampler2D texB;
@@ -32,18 +34,69 @@ const FRAG = /* glsl */ `
 
   vec3 srgbToLinear(vec3 c) { return pow(c, vec3(2.2)); }
 
-  // Procedural sunset fallback: calm vertical gradient + slow sun glow, loop-safe by design.
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float noise(vec2 p) {
+    vec2 i = floor(p); vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+  }
+  float fbm(vec2 p) {
+    float v = 0.0; float a = 0.55;
+    for (int i = 0; i < 4; i++) { v += a * noise(p); p = p * 2.1 + 17.3; a *= 0.5; }
+    return v;
+  }
+
   vec3 proceduralSunset(vec2 uv, float t) {
-    float cycle = 0.5 + 0.5 * sin(t * 0.02);          // very slow breathing, no flashing
-    vec3 skyTop = mix(vec3(0.10, 0.12, 0.25), vec3(0.06, 0.08, 0.20), cycle);
-    vec3 horizon = mix(vec3(0.95, 0.45, 0.15), vec3(0.85, 0.35, 0.20), cycle);
-    vec3 col = mix(horizon, skyTop, smoothstep(0.18, 0.85, uv.y));
-    vec2 sun = vec2(0.5, 0.16);
-    float d = distance(uv * vec2(1.78, 1.0), sun * vec2(1.78, 1.0));
-    col += vec3(1.0, 0.75, 0.45) * smoothstep(0.20, 0.0, d) * 0.9;
-    float sea = smoothstep(0.16, 0.15, uv.y);
-    col = mix(col, col * vec3(0.35, 0.4, 0.55) + vec3(0.18, 0.10, 0.06), sea);
-    return col;
+    float aspect = 2.4;                       // screen is 30x12.5m
+    float seaLine = 0.30;
+    float breathe = 0.5 + 0.5 * sin(t * 0.05); // ~2min warm breathing
+
+    // --- sky ---
+    vec3 zenith  = mix(vec3(0.07, 0.10, 0.24), vec3(0.05, 0.07, 0.19), breathe);
+    vec3 mid     = vec3(0.55, 0.26, 0.22);
+    vec3 horizon = mix(vec3(1.05, 0.52, 0.18), vec3(0.98, 0.42, 0.16), breathe);
+    float h = smoothstep(seaLine, 1.0, uv.y);
+    vec3 col = mix(horizon, mid, smoothstep(0.0, 0.45, h));
+    col = mix(col, zenith, smoothstep(0.35, 1.0, h));
+
+    // --- sun: low disc + wide glow, gentle shimmer ---
+    vec2 sun = vec2(0.5, seaLine + 0.10);
+    vec2 d2 = (uv - sun) * vec2(aspect, 1.0);
+    float d = length(d2);
+    float shimmer = 1.0 + 0.03 * sin(t * 0.7);
+    col += vec3(1.0, 0.72, 0.38) * 0.85 * smoothstep(0.5, 0.0, d);            // wide glow
+    col += vec3(1.25, 0.85, 0.5) * smoothstep(0.055 * shimmer, 0.035, d);      // disc
+
+    // --- clouds: two drifting bands, lit from below ---
+    float drift1 = fbm(vec2(uv.x * 3.0 - t * 0.014, uv.y * 9.0));
+    float band1 = smoothstep(0.5, 0.72, drift1) * smoothstep(0.85, 0.55, uv.y) * smoothstep(seaLine + 0.05, seaLine + 0.22, uv.y);
+    vec3 cloudLit = mix(vec3(0.85, 0.42, 0.28), vec3(0.30, 0.16, 0.20), smoothstep(seaLine, 0.8, uv.y));
+    col = mix(col, cloudLit, band1 * 0.75);
+    float drift2 = fbm(vec2(uv.x * 5.5 + t * 0.02, uv.y * 14.0 + 5.0));
+    float band2 = smoothstep(0.55, 0.8, drift2) * smoothstep(0.95, 0.6, uv.y) * smoothstep(seaLine + 0.15, seaLine + 0.4, uv.y);
+    col = mix(col, cloudLit * 0.7, band2 * 0.5);
+
+    // --- sea: gradient + moving swell shading + sun glitter path ---
+    if (uv.y < seaLine) {
+      float depth = (seaLine - uv.y) / seaLine;           // 0 at horizon, 1 at bottom
+      vec3 sea = mix(vec3(0.62, 0.30, 0.16), vec3(0.06, 0.07, 0.12), smoothstep(0.0, 0.7, depth));
+      // swell bands roll toward viewer
+      float swell = noise(vec2(uv.x * 18.0, uv.y * 60.0 + t * 0.35));
+      sea *= 0.92 + 0.16 * swell;
+      // glitter path under the sun: sparkling highlights, denser near horizon
+      float pathW = mix(0.035, 0.16, depth);
+      float path = smoothstep(pathW, 0.0, abs(uv.x - 0.5) / aspect * 2.2);
+      float sparkle = noise(vec2(uv.x * 90.0, uv.y * 220.0 - t * 1.1));
+      sparkle = smoothstep(0.72, 0.95, sparkle);
+      sea += vec3(1.1, 0.72, 0.4) * path * (0.25 + 0.75 * sparkle) * (1.0 - depth * 0.7);
+      col = sea;
+    }
+
+    // gentle vignette so the frame edges sit into the dark hall
+    float vig = smoothstep(0.0, 0.18, uv.x) * smoothstep(1.0, 0.82, uv.x)
+              * smoothstep(0.0, 0.12, uv.y) * smoothstep(1.0, 0.9, uv.y);
+    return col * mix(0.75, 1.0, vig);
   }
 
   void main() {
@@ -93,11 +146,21 @@ export class ScreenPlayer {
   private stallTimer: ReturnType<typeof setTimeout> | null = null;
   private mediaBase: string;
 
-  constructor(mesh: Mesh, spillLights: PointLight[], rendition: Rendition, mediaBase = '/media') {
+  private preferVideo: boolean;
+
+  constructor(
+    mesh: Mesh,
+    spillLights: PointLight[],
+    rendition: Rendition,
+    opts: { mediaBase?: string; preferVideo?: boolean } = {},
+  ) {
     this.mesh = mesh;
     this.spillLights = spillLights;
     this.rendition = rendition;
-    this.mediaBase = mediaBase;
+    this.mediaBase = opts.mediaBase ?? '/media';
+    // Until real footage is adopted (user licensing decision), the animated procedural
+    // sunset is the default visual; `?video` forces the (synthetic) video pipeline.
+    this.preferVideo = opts.preferVideo ?? true;
     this.material = new ShaderMaterial({
       uniforms: {
         texA: { value: null },
@@ -148,6 +211,10 @@ export class ScreenPlayer {
 
   /** Prepare both slots for the chosen rendition. Resolves once A can play. */
   async load(): Promise<boolean> {
+    if (!this.preferVideo) {
+      this.enableProcedural();
+      return true;
+    }
     this.disposeSlots();
     const a = this.makeSlot();
     const b = this.makeSlot();

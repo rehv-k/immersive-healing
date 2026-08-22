@@ -66,8 +66,7 @@ function boot(): void {
 
   const world = buildWorld(scene);
   const player = new Player(camera);
-  player.setWalkables(world.walkables);
-  player.teleport(world.anchors.spawnCorridor.clone().setY(EYE_HEIGHT), Math.PI); // face -z? spawn faces corridor
+  player.setWalkables(world.walkables, world.obstacles);
   player.teleport(world.anchors.spawnCorridor.clone().setY(EYE_HEIGHT), 0);
 
   const inputSession = new InputSession(bundle.canvas);
@@ -93,7 +92,11 @@ function boot(): void {
 
   // --- quality / screen ---
   const qc = new QualityController((preset, scale) => bundle.setPreset(preset, scale));
-  const screen = new ScreenPlayer(world.screenMesh, world.spillLights, '1080p');
+  // Animated procedural sunset is the default until real footage is adopted
+  // (user licensing decision); `?video` exercises the synthetic-video pipeline.
+  const screen = new ScreenPlayer(world.screenMesh, world.spillLights, '1080p', {
+    preferVideo: new URLSearchParams(location.search).has('video'),
+  });
 
   const pickRendition = () =>
     chooseRendition({
@@ -176,7 +179,8 @@ function boot(): void {
         player.teleport(world.anchors.spawnHall.clone().setY(EYE_HEIGHT), 0);
         sceneMachine.transition('hall');
       } else {
-        player.teleport(world.anchors.spawnCorridor.clone().setY(EYE_HEIGHT), Math.PI);
+        // yaw 0 looks down -z — straight into the corridor toward the hall
+        player.teleport(world.anchors.spawnCorridor.clone().setY(EYE_HEIGHT), 0);
         sceneMachine.transition('corridor');
       }
       fadeIn();
@@ -263,6 +267,9 @@ function boot(): void {
   );
 
   document.addEventListener('visibilitychange', () => {
+    // Sound only while viewing (user decision 2026-08-22 — supersedes the old
+    // background-playback requirement; gain-only, the context keeps running).
+    graph.setHidden(document.visibilityState === 'hidden');
     if (document.visibilityState === 'visible') {
       screen.onVisible(store.get().scene.paused);
       if (graph.ctx.state !== 'running' && store.get().scene.state !== 'gate') {
@@ -376,6 +383,7 @@ function boot(): void {
     }
 
     screen.update(dt); // video ramp/gating/spill (uploads merge into render below)
+    world.update(dt); // dust motes drift
     qc.tick(dt, app);
     bundle.render(dt);
     debug.frame(dt);

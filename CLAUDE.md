@@ -12,7 +12,7 @@
 - three의 `Audio.setVolume()` / `AudioListener.setMasterVolume()` 금지 — 자체 GainNode 버스(3단: userVolume→duck→mute)만.
 - `gain.value` 직접 대입 금지 — `setValueAtTime`+`linearRampToValueAtTime`.
 - MP3, `MediaElementSource`, 5분급 통짜 AudioBuffer 금지.
-- `visibilitychange → ctx.suspend()` 절대 금지 (백그라운드 오디오 지속이 요구사항).
+- `visibilitychange → ctx.suspend()` 절대 금지 — 단 [2026-08-22 사용자 결정] 소리는 탭이 보일 때만: visibilityBus **게인** 페이드로 처리(클럭은 계속 돈다).
 - 오디오 스케줄을 rAF에 매달기 금지 — `ctx.currentTime` 기준.
 - PositionalAudio: 생성 즉시 `distanceModel='linear'` 명시 + gain을 spatialBus로 재배선. AudioContext는 graph.ts가 생성 후 `THREE.AudioContext.setContext()`를 AudioListener 생성 전에 호출.
 
