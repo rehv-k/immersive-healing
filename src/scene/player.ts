@@ -46,10 +46,27 @@ export class Player {
     if (!v) this.keys.clear();
   }
 
+  private lastVFov = 0;
+
   applySettings(s: Settings): void {
     this.settings = s;
-    if (this.camera.fov !== s.fov) {
-      this.camera.fov = s.fov;
+    this.syncFov();
+  }
+
+  /**
+   * settings.fov is a HORIZONTAL fov (industry convention, GAG "monitor 90°");
+   * three.js camera.fov is VERTICAL — convert per current aspect. 90°h at 16:9 ≈ 59°v.
+   * (Feeding 90 straight into camera.fov caused a fisheye looking-up feel.)
+   */
+  private syncFov(): void {
+    const s = this.settings;
+    if (!s) return;
+    const hRad = (s.fov * Math.PI) / 180;
+    const vRad = 2 * Math.atan(Math.tan(hRad / 2) / this.camera.aspect);
+    const vDeg = (vRad * 180) / Math.PI;
+    if (Math.abs(vDeg - this.lastVFov) > 0.01) {
+      this.lastVFov = vDeg;
+      this.camera.fov = vDeg;
       this.camera.updateProjectionMatrix();
     }
   }
@@ -87,6 +104,7 @@ export class Player {
   update(dt: number, appState: AppState): void {
     const s = this.settings;
     if (!s) return;
+    this.syncFov(); // re-derive vertical fov when aspect changes (resize)
 
     if (this.enabled && !appState.scene.paused && !appState.scene.transitioning) {
       this.updateLook(dt, s, appState.sys.pointerLocked);

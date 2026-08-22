@@ -68,10 +68,11 @@ function loopBlend(data: Float32Array, sr: number, seconds: number): void {
   data.fill(0, n - 8, n); // guard against residual click
 }
 
+// Gains trimmed 2026-08-22 (user: "소리가 너무 커") — calm bed, not foreground.
 const LAYERS: Layer[] = [
-  { seconds: 37, build: buildWaves, gain: 0.7 },
-  { seconds: 53, build: buildWind, gain: 0.45 },
-  { seconds: 71, build: buildPad, gain: 0.5 },
+  { seconds: 37, build: buildWaves, gain: 0.3 },
+  { seconds: 53, build: buildWind, gain: 0.18 },
+  { seconds: 71, build: buildPad, gain: 0.22 },
 ];
 
 export class Ambience {

@@ -82,13 +82,13 @@ function boot(): void {
   // two hall sources for lateral space. All synthesized placeholders.
   const guideBuf = makeGuideBuffer(graph.ctx, 23);
   const hallMax = world.anchors.viewingMaxDistance * 1.5;
-  positional.create(world.screenMesh, guideBuf, { refDistance: 8, maxDistance: 90, level: 0.9 });
+  positional.create(world.screenMesh, guideBuf, { refDistance: 8, maxDistance: 90, level: 0.45 });
   const sideBufL = makeGuideBuffer(graph.ctx, 29);
   const sideBufR = makeGuideBuffer(graph.ctx, 31);
   const sideL = world.spillLights[0];
   const sideR = world.spillLights[2];
-  if (sideL) positional.create(sideL, sideBufL, { refDistance: 5, maxDistance: hallMax, level: 0.35 });
-  if (sideR) positional.create(sideR, sideBufR, { refDistance: 5, maxDistance: hallMax, level: 0.35 });
+  if (sideL) positional.create(sideL, sideBufL, { refDistance: 5, maxDistance: hallMax, level: 0.18 });
+  if (sideR) positional.create(sideR, sideBufR, { refDistance: 5, maxDistance: hallMax, level: 0.18 });
 
   // --- quality / screen ---
   const qc = new QualityController((preset, scale) => bundle.setPreset(preset, scale));

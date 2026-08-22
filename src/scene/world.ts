@@ -11,19 +11,71 @@ import {
   BoxGeometry,
   Box3,
   BufferGeometry,
+  CanvasTexture,
   Float32BufferAttribute,
   FogExp2,
   Group,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   PlaneGeometry,
   Points,
   PointsMaterial,
   PointLight,
+  RepeatWrapping,
   Scene,
   SpotLight,
+  SRGBColorSpace,
   Vector3,
 } from 'three';
+
+/** Procedural tile texture: visible grout grid + per-tile tonal variation so the
+ *  floor reads as a floor (user feedback: floor was indistinguishable from walls). */
+function makeTileTexture(tilePx = 128, tiles = 4, base = '#1c1712', grout = '#060504'): CanvasTexture {
+  const size = tilePx * tiles;
+  const cv = document.createElement('canvas');
+  cv.width = size;
+  cv.height = size;
+  const g = cv.getContext('2d')!;
+  for (let ty = 0; ty < tiles; ty++) {
+    for (let tx = 0; tx < tiles; tx++) {
+      const jitter = ((tx * 7 + ty * 13) % 5) * 4 - 8; // deterministic tone variation
+      g.fillStyle = shade(base, jitter);
+      g.fillRect(tx * tilePx, ty * tilePx, tilePx, tilePx);
+      // subtle inner sheen gradient per tile
+      const gr = g.createLinearGradient(tx * tilePx, ty * tilePx, tx * tilePx, (ty + 1) * tilePx);
+      gr.addColorStop(0, 'rgba(255,220,180,0.05)');
+      gr.addColorStop(1, 'rgba(0,0,0,0.12)');
+      g.fillStyle = gr;
+      g.fillRect(tx * tilePx, ty * tilePx, tilePx, tilePx);
+    }
+  }
+  g.strokeStyle = grout;
+  g.lineWidth = Math.max(2, tilePx * 0.04);
+  for (let i = 0; i <= tiles; i++) {
+    g.beginPath();
+    g.moveTo(i * tilePx, 0);
+    g.lineTo(i * tilePx, size);
+    g.moveTo(0, i * tilePx);
+    g.lineTo(size, i * tilePx);
+    g.stroke();
+  }
+  const tex = new CanvasTexture(cv);
+  tex.wrapS = RepeatWrapping;
+  tex.wrapT = RepeatWrapping;
+  tex.colorSpace = SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+function shade(hex: string, delta: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const clamp = (v: number): number => Math.min(255, Math.max(0, v));
+  const r = clamp(((n >> 16) & 255) + delta);
+  const g = clamp(((n >> 8) & 255) + delta);
+  const b = clamp((n & 255) + delta);
+  return `rgb(${r},${g},${b})`;
+}
 
 export const CORRIDOR_LENGTH = 40; // m — within SCN-24's 32~64m at normal speed
 export const CORRIDOR_WIDTH = 4;
@@ -65,9 +117,24 @@ export function buildWorld(scene: Scene): World {
 
   const wallMat = new MeshStandardMaterial({ color: 0x171310, roughness: 0.92, metalness: 0.02 });
   const columnMat = new MeshStandardMaterial({ color: 0x1e1813, roughness: 0.85, metalness: 0.05 });
-  const floorMat = new MeshStandardMaterial({ color: 0x0c0b0a, roughness: 0.6, metalness: 0.15 });
+  // Floors are textured tiles — clearly distinct from walls, slight sheen catches
+  // the screen spill so the ground plane reads (공간감).
+  const hallFloorTex = makeTileTexture(128, 4, '#221b14', '#070605');
+  hallFloorTex.repeat.set(HALL_WIDTH / 2.4, HALL_DEPTH / 2.4);
+  const hallFloorMat = new MeshStandardMaterial({
+    map: hallFloorTex,
+    roughness: 0.45,
+    metalness: 0.2,
+  });
+  const corrFloorTex = makeTileTexture(128, 2, '#1d1712', '#070605');
+  corrFloorTex.repeat.set(CORRIDOR_WIDTH / 1.6, CORRIDOR_LENGTH / 1.6);
+  const corrFloorMat = new MeshStandardMaterial({
+    map: corrFloorTex,
+    roughness: 0.5,
+    metalness: 0.15,
+  });
   const darkMat = new MeshStandardMaterial({ color: 0x090807, roughness: 1 });
-  const benchMat = new MeshStandardMaterial({ color: 0x241d16, roughness: 0.8 });
+  const benchMat = new MeshStandardMaterial({ color: 0x2b2218, roughness: 0.75 });
 
   const obstacles: Box3[] = [];
 
@@ -98,7 +165,7 @@ export function buildWorld(scene: Scene): World {
   addBox(0.3, CORRIDOR_HEIGHT, CORRIDOR_LENGTH, -cw - 0.15, CORRIDOR_HEIGHT / 2, -CORRIDOR_LENGTH / 2, wallMat);
   addBox(0.3, CORRIDOR_HEIGHT, CORRIDOR_LENGTH, cw + 0.15, CORRIDOR_HEIGHT / 2, -CORRIDOR_LENGTH / 2, wallMat);
   addBox(CORRIDOR_WIDTH + 0.6, 0.3, CORRIDOR_LENGTH, 0, CORRIDOR_HEIGHT + 0.15, -CORRIDOR_LENGTH / 2, darkMat);
-  addBox(CORRIDOR_WIDTH + 0.6, 0.3, CORRIDOR_LENGTH, 0, -0.15, -CORRIDOR_LENGTH / 2, floorMat);
+  addBox(CORRIDOR_WIDTH + 0.6, 0.3, CORRIDOR_LENGTH, 0, -0.15, -CORRIDOR_LENGTH / 2, corrFloorMat);
   addBox(CORRIDOR_WIDTH + 0.6, CORRIDOR_HEIGHT, 0.3, 0, CORRIDOR_HEIGHT / 2, 0.15, wallMat);
 
   // Rhythmic ribs — the walk gains cadence and scale cues.
@@ -121,7 +188,17 @@ export function buildWorld(scene: Scene): World {
   addBox(0.4, HALL_HEIGHT, HALL_DEPTH, -hw - 0.2, HALL_HEIGHT / 2, hallZc, wallMat);
   addBox(0.4, HALL_HEIGHT, HALL_DEPTH, hw + 0.2, HALL_HEIGHT / 2, hallZc, wallMat);
   addBox(HALL_WIDTH + 0.8, 0.4, HALL_DEPTH, 0, HALL_HEIGHT + 0.2, hallZc, darkMat);
-  addBox(HALL_WIDTH + 0.8, 0.4, HALL_DEPTH, 0, -0.2, hallZc, floorMat);
+  addBox(HALL_WIDTH + 0.8, 0.4, HALL_DEPTH, 0, -0.2, hallZc, hallFloorMat);
+  // Dim aisle guide strips on the floor, leading the eye (and feet) to the screen.
+  for (const gx of [-CORRIDOR_WIDTH / 2 + 0.3, CORRIDOR_WIDTH / 2 - 0.3]) {
+    const strip = new Mesh(
+      new PlaneGeometry(0.12, HALL_DEPTH - 4),
+      new MeshBasicMaterial({ color: 0x66401f, transparent: true, opacity: 0.5 }),
+    );
+    strip.rotation.x = -Math.PI / 2;
+    strip.position.set(gx, 0.012, hallZc);
+    root.add(strip);
+  }
   addBox(HALL_WIDTH + 0.8, HALL_HEIGHT, 0.4, 0, HALL_HEIGHT / 2, hallZ0 - HALL_DEPTH - 0.2, wallMat);
   const doorHalf = CORRIDOR_WIDTH / 2 + 0.2;
   const segW = (HALL_WIDTH - CORRIDOR_WIDTH) / 2;
@@ -177,7 +254,12 @@ export function buildWorld(scene: Scene): World {
   root.add(frame);
 
   // ---------------- Lighting ----------------
-  root.add(new AmbientLight(0x201812, 0.55));
+  root.add(new AmbientLight(0x241a12, 0.8));
+  // Low grazing light across the hall floor so the tile grid is legible.
+  const floorWash = new SpotLight(0x8a5a30, 1.2, 55, Math.PI / 2.4, 0.8, 1.4);
+  floorWash.position.set(0, 6, hallZ0 - 2);
+  floorWash.target.position.set(0, 0, screenZ + 8);
+  root.add(floorWash, floorWash.target);
   const hallGlow = new SpotLight(0x40281a, 1.8, 70, Math.PI / 2.6, 0.6, 1.1);
   hallGlow.position.set(0, HALL_HEIGHT - 2, hallZc + 6);
   hallGlow.target.position.set(0, 2, screenZ);
