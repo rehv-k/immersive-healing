@@ -1,0 +1,34 @@
+{
+  "name": "immersive-healing",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "UNLICENSED",
+  "description": "Immersive Healing (working title) - walkable web exhibition MVP. Sunset #1.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run typecheck && vite build && node scripts/check-size.mjs && node scripts/check-licenses.mjs && node scripts/check-arch.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "node scripts/check-arch.mjs && node scripts/check-licenses.mjs",
+    "gen:media": "node scripts/gen-test-media.mjs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "detect-gpu": "5.0.70",
+    "postprocessing": "6.39.4",
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/three": "^0.185.0",
+    "ffmpeg-static": "^5.2.0",
+    "typescript": "^5.6.0",
+    "vite": "^7.0.0",
+    "vitest": "^3.0.0"
+  }
+}

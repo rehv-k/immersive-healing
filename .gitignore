@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.local
+.DS_Store
+
+# Generated local test media (regenerate with `npm run gen:media`).
+# Real media assets live outside the repo (R2) per SRS-DEP; only manifests are committed.
+public/media/
+
+# Measurement logs from the debug overlay
+docs/dev/measurements/

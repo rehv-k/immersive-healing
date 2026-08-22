@@ -1,0 +1,40 @@
+# DEVLOG — 개발 기록
+
+> 규칙: ① 문서와 충돌 시 코드 우선 → 문서 역반영 항목으로 기록·보고 ② 필수 아님 추가 기능은 기록만 ③ 직접 확인 불가 판정 3회 → 사용자 확인 항목으로 이관.
+
+## 2026-08-22 — 개발 착수
+
+### 환경 확인
+- three@0.185.1 npm 실존 확인 — SRS 핀과 일치. postprocessing@6.39.4 (peer <0.186.0 충족), detect-gpu@5.0.70.
+- git 저장소 초기화 완료. 코드 라이선스: **UNLICENSED(비공개)로 임시 설정** — 공개 라이선스(MIT 등) 결정은 사용자 확인 항목.
+
+### 구현 완료 (2026-08-22)
+- 전 모듈 구현: core(store/settings/sceneState/inputSession) · scene(renderer/world/player/screen/quality + 순수 로직 renditionSelect/adaptation) · audio(graph 3버스/ambience 다층 합성 루프/positional HRTF) · ui(gate/settings/pause/credits/unsupported/hud/debugOverlay) · analytics(no-op) · scripts(check-arch/size/licenses, gen-test-media).
+- **검증 통과**: tsc strict 0오류 / Vitest 24개 전부 통과(설정 클램프·전이 매트릭스 전수·렌디션 선택·적응 히스테리시스) / check-arch·check-licenses OK / 프로덕션 빌드 **gzip 218.8KB ≤ 300KB(NFR-8)** / 브라우저 실기: 게이트 렌더·inert 패널 격리·gate→corridor→hall→pause→exiting→gate 상태·UI 동기화 E2E 확인·AudioContext running·720p 영상 canplay·절차 셰이더 폴백 및 토스트 동작 확인.
+
+### 문서 역반영 (코드 우선 판단 — SRS 반영 필요)
+1. **SRS-SCN-12**: `SelectiveBloomEffect` 대신 **휘도 임계 BloomEffect**(threshold 0.85 — 발광 스크린만 통과) 채택. 동일 목적을 더 낮은 비용·단순한 구성으로 달성. → SRS에 "또는 휘도 임계 기반 등가 구현 허용" 문구 반영 필요.
+2. **SRS-SCN-13**: 스필 라이트 평균색을 GPU 다운샘플+fence 비동기 읽기 대신 **2×2 캔버스 drawImage CPU 샘플(250ms 주기)** 로 구현 — 구현 단순·비용 미미, CORS 오염 감지(ERR-10)도 이 경로에서 겸함. → "등가 CPU 샘플 허용" 문구 반영 필요.
+3. **SRS §8.2 renderScale**: 뷰포트 부분 렌더(재할당 금지) 대신 현재 **setSize 재할당 방식** — 변경 빈도가 히스테리시스로 제한돼 실용상 문제 없으나 규범과 다름. M0a에서 스파이크 실측 후 부분 렌더 전환 여부 결정. (규범 유지, 구현 격차로 기록)
+4. **detect-gpu 초기 지연 버그 발견·수정**: 네트워크 벤치마크 fetch가 지연/실패하면 렌더러 크기가 0으로 남는 문제 → 생성 즉시 Low 프리셋 적용 + 감지 4초 타임박스. SRS §8.2 "미판정 → Low 시작" 규범을 구현이 강화한 사례.
+
+### 추가 기능 후보 (기록만 — 이번에 안 함)
+- 모션 블러 실제 이펙트(토글은 존재, 기본 꺼짐이 규범이라 시각 효과 자체는 미구현 no-op).
+- LUT 색보정(High 프리셋 체인의 LUT3D — 아트 패스(M1)에서 LUT 자산과 함께).
+- 복도 연출 고도화(현재 스트립 라이트만 — M1 아트).
+- Playwright 통합 테스트(§9.2 권장 계층).
+- 매니페스트 기반 바이트 가중 진행률(현재 절차 생성 에셋이라 즉시 완료 — 실제 GLB/오디오 도입 시).
+
+### 사용자 확인 필요 항목
+1. **실제 관람 검증 (환경 제약 3회로 이관)**: 이 세션의 브라우저 패널이 화면에 표시되지 않아 rAF(렌더 루프)·Pointer Lock·스크린샷 검증이 불가했음(비합성 탭에서는 브라우저가 이들을 정지시킴). 상태 머신·UI 동기화·오디오·영상 로드는 콘솔로 검증 완료. **아래 체크리스트로 직접 확인 필요**:
+   ```bash
+   npm run dev
+   ```
+   - [ ] http://localhost:5173 접속 → 게이트 표시, "입장하기" 클릭 → 마우스 잠금 + 어두운 복도에서 시작, 소리(파도/바람 합성음)가 앞쪽에서 들림
+   - [ ] WASD/방향키 이동, 마우스·Q/E/R/F 시점, 복도 끝 도달 시 상영관 자동 진입
+   - [ ] 상영관: 대형 스크린에 일몰(테스트 영상 또는 그라데이션) 상영, 다가가면 소리 커짐
+   - [ ] Esc → 일시정지 메뉴(소리 볼륨 낮아짐), 1.5초 후 "계속" 활성 → 복귀
+   - [ ] 탭 전환 → 소리 유지, 복귀 시 "클릭하여 시점 복귀" 프롬프트
+   - [ ] M 음소거, 설정 변경 즉시 반영·새로고침 후 유지, ?debug 오버레이 fps 표시
+2. **코드 라이선스 결정** (현재 UNLICENSED/private).
+3. **실제 일몰 영상·사운드 소스 채택**: 현재 합성 테스트 미디어(ffmpeg 절차 생성 + 런타임 합성 앰비언스). Pexels/Pixabay·Freesound 소스 선정은 라이선스 확인이 필요한 사용자 결정 (PRD §6.1 기준 ⑥ 태양 이동 포함).

@@ -1,0 +1,56 @@
+[
+  {
+    "kind": "video",
+    "title": "합성 일몰 테스트 영상 (개발용)",
+    "author": "프로젝트 내부 생성 (FFmpeg 절차 생성)",
+    "sourceUrl": "",
+    "license": "CC0-1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "usedFor": "상영관 스크린 — 정식 소스 선정 전 로컬 개발용"
+  },
+  {
+    "kind": "audio",
+    "title": "합성 앰비언스 (파도·바람·패드)",
+    "author": "프로젝트 내부 생성 (런타임 합성)",
+    "sourceUrl": "",
+    "license": "CC0-1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "usedFor": "공간 사운드 전체 — 정식 소스 선정 전 로컬 개발용"
+  },
+  {
+    "kind": "tool",
+    "title": "three.js",
+    "author": "mrdoob and contributors",
+    "sourceUrl": "https://github.com/mrdoob/three.js",
+    "license": "MIT",
+    "licenseUrl": "https://github.com/mrdoob/three.js/blob/dev/LICENSE",
+    "usedFor": "3D 렌더링"
+  },
+  {
+    "kind": "tool",
+    "title": "postprocessing",
+    "author": "pmndrs / Raoul van Rüschen",
+    "sourceUrl": "https://github.com/pmndrs/postprocessing",
+    "license": "Zlib",
+    "licenseUrl": "https://github.com/pmndrs/postprocessing/blob/main/LICENSE.md",
+    "usedFor": "후처리 (블룸·톤매핑·SMAA)"
+  },
+  {
+    "kind": "tool",
+    "title": "detect-gpu",
+    "author": "pmndrs / Tim van Scherpenzeel",
+    "sourceUrl": "https://github.com/pmndrs/detect-gpu",
+    "license": "MIT",
+    "licenseUrl": "https://github.com/pmndrs/detect-gpu/blob/master/LICENSE",
+    "usedFor": "GPU 티어 감지"
+  },
+  {
+    "kind": "tool",
+    "title": "Vite",
+    "author": "Evan You and contributors",
+    "sourceUrl": "https://github.com/vitejs/vite",
+    "license": "MIT",
+    "licenseUrl": "https://github.com/vitejs/vite/blob/main/LICENSE",
+    "usedFor": "빌드 도구"
+  }
+]
