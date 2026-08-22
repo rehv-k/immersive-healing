@@ -181,7 +181,7 @@ interface SceneSlice {
   - `SPAWN_corridor` / `SPAWN_hall`: 카메라 초기 위치+방향. 스킵(FR-23)의 목적지는 `SPAWN_hall`.
   - `TRIGGER_hallEntry`: 통과 시 `corridor→hall` 전이를 발생시키는 박스 볼륨 — "도보 도달"의 정의.
   - `BOUNDS_viewing`: 관람 영역 — 정위 음원 `maxDistance` 산출 기준(§3.9).
-  - **복도 유효 보행 거리 = 도보 20~40초 × 이동속도 '보통'(1.6 m/s) ≈ 32~64m** — 아트가 만족해야 할 제약(PRD FR-22의 SRS 이관, 감사 M-3).
+  - **[변경 2026-08-22 — 코드 역반영] 복도 유효 보행 거리 = 도보 10~15초 × 이동속도 '보통'(2.0 m/s) ≈ 20~30m** (현 24m). 이동 속도 3단도 1.2/2.0/3.0 m/s로 상향 — 아트가 만족해야 할 제약(PRD FR-22 변경분).
 
 ### 3.6 core/settings (SRS-COR-2x)
 

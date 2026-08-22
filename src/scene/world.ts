@@ -77,9 +77,11 @@ function shade(hex: string, delta: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-export const CORRIDOR_LENGTH = 40; // m — within SCN-24's 32~64m at normal speed
+// v3 (사용자 피드백): corridor 40→24m + normal speed 2.0 m/s → 도보 ~12초.
+// 천장 6→4.2m — 사람 스케일 복도에서 18m 홀로 열리는 대비가 웅장함을 키운다.
+export const CORRIDOR_LENGTH = 24;
 export const CORRIDOR_WIDTH = 4;
-export const CORRIDOR_HEIGHT = 6;
+export const CORRIDOR_HEIGHT = 4.2;
 export const HALL_WIDTH = 44;
 export const HALL_DEPTH = 30;
 export const HALL_HEIGHT = 18;
@@ -113,7 +115,8 @@ export function buildWorld(scene: Scene): World {
   root.name = 'world';
 
   // Warm dark fog gives the hall depth and makes light beams readable.
-  scene.fog = new FogExp2(0x0c0906, 0.014);
+  // (0.014 → 0.008: distant geometry was vanishing — "잘려 보인다" feedback.)
+  scene.fog = new FogExp2(0x0c0906, 0.008);
 
   const wallMat = new MeshStandardMaterial({ color: 0x171310, roughness: 0.92, metalness: 0.02 });
   const columnMat = new MeshStandardMaterial({ color: 0x1e1813, roughness: 0.85, metalness: 0.05 });
@@ -162,26 +165,45 @@ export function buildWorld(scene: Scene): World {
 
   // ---------------- Corridor ----------------
   const cw = CORRIDOR_WIDTH / 2;
-  addBox(0.3, CORRIDOR_HEIGHT, CORRIDOR_LENGTH, -cw - 0.15, CORRIDOR_HEIGHT / 2, -CORRIDOR_LENGTH / 2, wallMat);
-  addBox(0.3, CORRIDOR_HEIGHT, CORRIDOR_LENGTH, cw + 0.15, CORRIDOR_HEIGHT / 2, -CORRIDOR_LENGTH / 2, wallMat);
+  // Paneled walls — visible texture so motion parallax reads while walking.
+  const corrWallTex = makeTileTexture(128, 2, '#2a2018', '#0a0806');
+  corrWallTex.repeat.set(CORRIDOR_LENGTH / 2.1, CORRIDOR_HEIGHT / 2.1);
+  const corrWallMat = new MeshStandardMaterial({ map: corrWallTex, roughness: 0.85, metalness: 0.03 });
+  addBox(0.3, CORRIDOR_HEIGHT, CORRIDOR_LENGTH, -cw - 0.15, CORRIDOR_HEIGHT / 2, -CORRIDOR_LENGTH / 2, corrWallMat);
+  addBox(0.3, CORRIDOR_HEIGHT, CORRIDOR_LENGTH, cw + 0.15, CORRIDOR_HEIGHT / 2, -CORRIDOR_LENGTH / 2, corrWallMat);
   addBox(CORRIDOR_WIDTH + 0.6, 0.3, CORRIDOR_LENGTH, 0, CORRIDOR_HEIGHT + 0.15, -CORRIDOR_LENGTH / 2, darkMat);
   addBox(CORRIDOR_WIDTH + 0.6, 0.3, CORRIDOR_LENGTH, 0, -0.15, -CORRIDOR_LENGTH / 2, corrFloorMat);
   addBox(CORRIDOR_WIDTH + 0.6, CORRIDOR_HEIGHT, 0.3, 0, CORRIDOR_HEIGHT / 2, 0.15, wallMat);
 
-  // Rhythmic ribs — the walk gains cadence and scale cues.
-  for (let i = 1; i <= 9; i++) {
-    const z = (-CORRIDOR_LENGTH * i) / 10;
-    addBox(0.25, CORRIDOR_HEIGHT, 0.5, -cw + 0.12, CORRIDOR_HEIGHT / 2, z, columnMat);
-    addBox(0.25, CORRIDOR_HEIGHT, 0.5, cw - 0.12, CORRIDOR_HEIGHT / 2, z, columnMat);
-    addBox(CORRIDOR_WIDTH, 0.25, 0.5, 0, CORRIDOR_HEIGHT - 0.12, z, columnMat);
-  }
-  // Low guide strips (warm, dim, steady — no flashing).
+  // Rhythmic ribs (every 4m) — cadence + depth cues.
   for (let i = 1; i <= 5; i++) {
     const z = (-CORRIDOR_LENGTH * i) / 6;
-    const strip = new PointLight(0xffb37a, 0.5, 8, 2);
-    strip.position.set(0, 0.35, z);
-    root.add(strip);
+    addBox(0.22, CORRIDOR_HEIGHT, 0.45, -cw + 0.11, CORRIDOR_HEIGHT / 2, z, columnMat);
+    addBox(0.22, CORRIDOR_HEIGHT, 0.45, cw - 0.11, CORRIDOR_HEIGHT / 2, z, columnMat);
+    addBox(CORRIDOR_WIDTH, 0.22, 0.45, 0, CORRIDOR_HEIGHT - 0.11, z, columnMat);
   }
+  // Wall sconces: visible warm fixtures at eye-ish height — bright anchors that make
+  // the walk legible in the dark (사용자 피드백: 가는지도 모르겠음).
+  const sconceGlowMat = new MeshBasicMaterial({ color: 0xffc37f });
+  for (let i = 0; i <= 5; i++) {
+    const z = -2 - (CORRIDOR_LENGTH - 4) * (i / 5);
+    for (const side of [-1, 1]) {
+      const fixture = new Mesh(new BoxGeometry(0.06, 0.5, 0.12), sconceGlowMat);
+      fixture.position.set(side * (cw - 0.05), 1.9, z);
+      root.add(fixture);
+      const glow = new PointLight(0xffb37a, 0.9, 7, 1.8);
+      glow.position.set(side * (cw - 0.35), 1.9, z);
+      root.add(glow);
+    }
+  }
+  // Center floor guide line running the whole corridor toward the hall.
+  const corrGuide = new Mesh(
+    new PlaneGeometry(0.1, CORRIDOR_LENGTH - 1),
+    new MeshBasicMaterial({ color: 0x8a5526, transparent: true, opacity: 0.6 }),
+  );
+  corrGuide.rotation.x = -Math.PI / 2;
+  corrGuide.position.set(0, 0.013, -CORRIDOR_LENGTH / 2);
+  root.add(corrGuide);
 
   // ---------------- Hall shell ----------------
   const hw = HALL_WIDTH / 2;
@@ -247,10 +269,11 @@ export function buildWorld(scene: Scene): World {
     new MeshStandardMaterial({ color: 0x000000, roughness: 1 }),
   );
   screenMesh.name = 'SCREEN';
-  screenMesh.position.set(0, SCREEN_HEIGHT / 2 + 2.2, screenZ);
+  // Screen bottom at 1.2m (was 2.2) — horizon sits nearer eye level, less craning up.
+  screenMesh.position.set(0, SCREEN_HEIGHT / 2 + 1.2, screenZ);
   root.add(screenMesh);
   const frame = new Mesh(new BoxGeometry(SCREEN_WIDTH + 1.4, SCREEN_HEIGHT + 1.4, 0.25), darkMat);
-  frame.position.set(0, SCREEN_HEIGHT / 2 + 2.2, screenZ - 0.15);
+  frame.position.set(0, SCREEN_HEIGHT / 2 + 1.2, screenZ - 0.15);
   root.add(frame);
 
   // ---------------- Lighting ----------------

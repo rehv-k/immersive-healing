@@ -89,10 +89,11 @@ export function resolveComfortProfile(s: Settings): ComfortProfile {
   return intact ? 'sensitive' : 'custom';
 }
 
+// Raised 2026-08-22 (user: corridor walk felt slow/long) — doc back-reflection noted.
 export const MOVE_SPEED_MPS: Record<Settings['moveSpeed'], number> = {
-  slow: 1.0,
-  normal: 1.6,
-  fast: 2.4,
+  slow: 1.2,
+  normal: 2.0,
+  fast: 3.0,
 };
 /** 1.0 sensitivity = 0.002 rad/px (SRS-COR-21 mapping). */
 export const LOOK_RAD_PER_PX = 0.002;

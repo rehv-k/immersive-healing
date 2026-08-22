@@ -49,7 +49,7 @@ const FRAG = /* glsl */ `
 
   vec3 proceduralSunset(vec2 uv, float t) {
     float aspect = 2.4;                       // screen is 30x12.5m
-    float seaLine = 0.30;
+    float seaLine = 0.26;                     // horizon near viewer eye level
     float breathe = 0.5 + 0.5 * sin(t * 0.05); // ~2min warm breathing
 
     // --- sky ---
