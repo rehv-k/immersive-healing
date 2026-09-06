@@ -6,7 +6,7 @@
 | Version / Status | v1.0 / Draft |
 | Parent SRS | [SRS](../srs/SRS.md) §8 (SRS-QLT, §8.1~8.6) |
 | Test Scripts | `tests/adaptation.test.ts` (초기 계획값 — 실제 연결은 리포트가 집계) |
-| 상위 체인 | RFP R-10 → PRD NFR-1~4 → SRS §8 → **본 TC** |
+| 상위 체인 | RFP R-10(성능 기준)·R-12(프리셋·핑퐁 금지) → PRD NFR-1~4 → SRS §8 → **본 TC** |
 
 > **권위 선언**: 요구·시험의 권위는 본 TC 문서다. 리포트는 특정 실행의 evidence다.
 > §6의 스크립트 경로는 초기 계획값이며 손으로 유지하지 않는다.

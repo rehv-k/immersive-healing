@@ -6,7 +6,7 @@
 | Version / Status | v1.0 / Draft |
 | Parent SRS | [SRS](../srs/SRS.md) §3.10 (SRS-UI-1~10) |
 | Test Scripts | (자동 시험 미배정 — 검사·시연 중심 컴포넌트) |
-| 상위 체인 | RFP R-6·R-7·R-13 → PRD FR-5x·6x·FR-90 → SRS-UI → **본 TC** |
+| 상위 체인 | RFP R-5(게이트)·R-6(일시정지)·R-13(unsupported)·R-24(효능 주장 금지) → PRD FR-1x·FR-5x·FR-6x·FR-90 → SRS-UI → **본 TC** |
 
 > **권위 선언**: 요구·시험의 권위는 본 TC 문서다. 리포트는 특정 실행의 evidence다.
 > DOM·접근성·문구는 **검사·시연이 1차 레인**이다. 리포트 "미커버"는 레인 배치다.
@@ -28,7 +28,7 @@
 | TC ID | 검증 SRS | 검증 방법 | 전제 | 절차 | 기대 결과 | Pass/Fail 기준 |
 |---|---|---|---|---|---|---|
 | **TC-UI-01** | SRS-UI-2 · FR-90 | 검사 | — | ① 게이트·크레딧·전 UI 문구 검사 | 치료·치유·효능 주장 0건('이완/휴식' 수준만), 광과민 고지 1줄 존재 | 금지 표현 0 **AND** 고지 존재 → Pass |
-| **TC-UI-02** | SRS-UI-3 | 검사 | — | ① check-arch ② gate 클릭 핸들러 검사 | ui는 `enterRequested` 액션만 발행, 포인터락·resume은 core 소유 | ui 내 브라우저 API 호출 0건 → Pass |
+| **TC-UI-02** | SRS-UI-3 | 검사 | — | ① check-arch ② gate 클릭 핸들러 검사 | ui는 액션/콜백 위임만 하고 오디오 resume·포인터락·전체화면은 core(inputSession)가 수행 | ui 내 브라우저 API 호출 0건 → Pass. ※현행 구현은 `enterRequested` 액션 대신 main 콜백 경로 — 격차 기록은 DEVLOG 2026-09-06 |
 | **TC-UI-03** | SRS-UI-4 | 시연 | 실기 | ① Esc 일시정지 ② Tab 순회 ③ 닫기 | 포커스 트랩 동작, 계속 버튼 1.5s 후 활성, 닫힘 시 포커스 복원 | 3항목 전부 → Pass |
 | **TC-UI-04** | SRS-UI-6 | 검사 | — | ① 크레딧 렌더 소스 검사 | `credits.json` 단일 소스 + 오픈소스 고지(three.js MIT 등) | 하드코딩 크레딧 0건 **AND** 고지 존재 → Pass |
 | **TC-UI-05** | SRS-UI-1 | 검사·시연 | 실기 | ① 루트 `pointer-events:none`·`inert` 검사 ② hall 상태 오버레이 확인 | 상영관에서 DOM 오버레이 전부 비표시(일시정지·최소 프롬프트 제외) | 검사 일치 **AND** 실기 확인 → Pass |

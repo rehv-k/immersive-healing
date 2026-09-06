@@ -6,7 +6,7 @@
 | Version / Status | v1.0 / Draft |
 | Parent SRS | [SRS](../srs/SRS.md) §3.8·§6.4·§6.5 (SRS-VID-1~7) |
 | Test Scripts | `tests/rendition.test.ts` (초기 계획값 — 실제 연결은 리포트가 집계) |
-| 상위 체인 | RFP R-8·R-11 → PRD FR-3x → SRS-VID → **본 TC** |
+| 상위 체인 | RFP R-11(로딩)·R-19~R-21(일몰 소스·스크린 통합·렌디션 3종) → PRD FR-3x → SRS-VID → **본 TC** |
 
 > **권위 선언**: 요구·시험의 권위는 본 TC 문서다. 리포트는 특정 실행의 evidence다.
 > §6의 스크립트 경로는 초기 계획값이며 손으로 유지하지 않는다.

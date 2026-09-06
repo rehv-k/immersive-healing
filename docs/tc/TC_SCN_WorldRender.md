@@ -6,7 +6,7 @@
 | Version / Status | v1.0 / Draft |
 | Parent SRS | [SRS](../srs/SRS.md) §2.1·§3.5·§3.7 (SRS-SCN-1x·2x·3x, SRS-COR-40) |
 | Test Scripts | (자동 시험 미배정 — 검사·시연·분석 중심 컴포넌트) |
-| 상위 체인 | RFP R-1~R-5 → PRD FR-1x·2x → SRS-SCN → **본 TC** |
+| 상위 체인 | RFP R-1(이동)·R-2(조작감)·R-4(웅장함)·R-17(감각 안전) → PRD FR-2x·FR-3x → SRS-SCN → **본 TC** |
 
 > **권위 선언**: 요구·시험의 권위는 본 TC 문서다. 리포트는 특정 실행의 evidence다.
 > 렌더링·공간은 시각 품질 의존이 커서 **검사·시연·분석(M0)이 1차 레인**이다. 리포트 "미커버"는 레인 배치다.

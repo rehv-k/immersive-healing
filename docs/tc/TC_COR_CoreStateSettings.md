@@ -6,7 +6,7 @@
 | Version / Status | v1.0 / Draft |
 | Parent SRS | [SRS](../srs/SRS.md) §3.1~3.4·§3.6 (SRS-COR-1x·2x·3x·5x) |
 | Test Scripts | `tests/sceneState.test.ts` · `tests/settings.test.ts` (초기 계획값 — 실제 연결은 리포트가 집계) |
-| 상위 체인 | RFP R-2·R-6·R-14 → PRD FR-2x·FR-5x → SRS-COR → **본 TC** |
+| 상위 체인 | RFP R-6(일시정지)·R-14~R-16(comfort·설정·reduced-motion) → PRD FR-5x·FR-6x·FR-7x → SRS-COR → **본 TC** |
 
 > **권위 선언**: 요구·시험의 권위는 본 TC 문서다. `scripts/generate-report.mjs`의 리포트는
 > **특정 실행의 evidence**이며, 검사·시연·분석 유형을 자동 미커버/PASS로 재정의하지 않는다.

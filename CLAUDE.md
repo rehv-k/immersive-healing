@@ -37,6 +37,8 @@ src/
     debugOverlay.ts     # fps JSON 수집(M0 측정용)
     dom.ts              # DOM 헬퍼
   analytics/track.ts    # no-op 훅(도구 미정 — SRS §1.3)
+  data/credits.json     # 크레딧 단일 대장(CC-BY·오픈소스 고지 원천)
+  styles.css            # DOM 오버레이 스타일(:focus-visible·inert 규칙 포함)
 scripts/
   check-arch.mjs        # ★의존 규칙·API 전유 기계 강제(빌드 게이트)
   check-size.mjs        # 번들 gzip ≤300KB 게이트
@@ -63,20 +65,19 @@ docs/report/            # 근거·evidence — ci-report.md(자동 생성), M0 �
 - 새 테스트는 제목에 `[TC-<COMP>-NN]` 완전형 ID 포함(복수 가능) + `scripts/generate-report.mjs`의 SUITES 등록 + `docs/tc/` 대응 문서에 정의. **orphan(문서에 없는 태그)은 리포트가 빌드를 깬다.**
 - three는 0.185.1 정확 핀 — postprocessing peer `<0.186.0` 때문. 임의 업그레이드 금지.
 
-## 5. 계약 표면 (ui→core 액션 / SRS §4 원천)
+## 5. 계약 표면 (ui→core / SRS §4 원천 — 실코드 기준 2026-09-06 대조)
 
-| 액션 | 발행처 | 의미 |
+| 액션 | 실제 발행처 | 의미 |
 |---|---|---|
-| `enterRequested {direct?}` | gate | 입장(direct=재방문 바로 상영관). core가 resume·포인터락 처리 |
 | `skipCorridor` | hud | 복도 스킵 |
-| `pauseResume` | Esc/pauseMenu | 일시정지 토글(corridor·hall에서만 유효) |
-| `exitRequested` / `reenterRequested` | pauseMenu/credits | 나가기 / 게이트 복귀 |
+| `exitRequested` | pauseMenu | 나가기(exiting 전이) |
+| `reenterRequested` | main(credits 닫힘 흐름) | 게이트 복귀 |
 | `settingsChanged {patch}` | settingsPanel/gate | 설정 부분 갱신(클램프는 core) |
-| `muteToggled` | hud | 음소거(muteBus 0.15s 램프) |
-| `openSettings`·`closeSettings`·`openCredits`·`closeCredits` | ui | 오버레이 개폐 |
+| `muteToggled` | main(M 키) | 음소거(muteBus 0.15s 램프) |
+| `openSettings`·`closeSettings`·`openCredits`·`closeCredits` | gate/pauseMenu/패널 | 오버레이 개폐 |
 | `noticeRetried {id}`·`noticeDismissed {id}` | hud | 오류 알림 처리(`sys.notices` 채널) |
 
-scene/audio → core 관측값은 `sys.*` 네임스페이스만 (오류는 `sys.notices`).
+**콜백 경로 (액션 아님 — 구현 격차 주의)**: 입장은 gate `onEnter(direct)` 콜백 → main `doEnter`(graph.resume → inputSession.requestLock → 전이), 일시정지는 Esc → 브라우저 포인터락 해제 → inputSession의 `pointerlockchange` 관측 → core 내부 전이, 복귀는 pauseMenu `onContinue` 콜백. `types.ts`의 `enterRequested`·`pauseResume` 액션은 핸들러만 있고 **발행처 0곳**(SRS-UI-3 규범과의 격차 — DEVLOG 2026-09-06 기록). scene/audio → core 관측값은 `sys.*` 네임스페이스만.
 
 ## 6. 개발 명령어
 

@@ -6,7 +6,7 @@
 | Version / Status | v1.0 / Draft |
 | Parent SRS | [SRS](../srs/SRS.md) §3.9 (SRS-AUD-1~8) |
 | Test Scripts | (자동 시험 미배정 — 검사·시연 중심 컴포넌트) |
-| 상위 체인 | RFP R-9 → PRD FR-4x → SRS-AUD → **본 TC** |
+| 상위 체인 | RFP R-3(정위 오디오)·R-7(탭 가시성)·R-17(급작 소리 배제) → PRD FR-4x → SRS-AUD → **본 TC** |
 
 > **권위 선언**: 요구·시험의 권위는 본 TC 문서다. 리포트는 특정 실행의 evidence다.
 > 본 컴포넌트는 Web Audio 실기 의존이 커서 **검사(Inspection)·시연(Demonstration)이 1차 레인**이다.
