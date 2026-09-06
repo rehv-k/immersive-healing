@@ -1,6 +1,6 @@
 ---
 name: scene-video
-description: "IH(몰입 힐링) 씬·렌더링·비디오 계층. Use when: 렌더러, 후처리, 블룸, 톤매핑, LUT, SMAA, 랩어라운드 스크린, 월드, 플레이어 이동, A/B 스왑, 루프 이음새, 렌디션 선택, rVFC, renderScale, 품질 프리셋, 적응 히스테리시스, fps 하락, screen.ts, adaptation.ts, renditionSelect.ts, 영상이 안 나올 때, 스왑에서 깜빡일 때, 프리셋이 멋대로 떨어질 때 등. Covers: src/scene/**, src/main.ts(rAF), tests/adaptation.test.ts, tests/rendition.test.ts."
+description: "IH(몰입 힐링) 씬·렌더링·비디오 계층. Use when: 렌더러, 후처리, 블룸, 톤매핑, 랩어라운드 스크린, 플레이어 이동, A/B 스왑, 루프 이음새, 렌디션, rVFC, renderScale, 프리셋, 적응 히스테리시스, screen.ts, adaptation.ts, 영상이 안 나올 때, 스왑에서 깜빡일 때, fps가 떨어질 때 등. Covers: src/scene/**, src/main.ts(rAF), tests/{adaptation,rendition}.test.ts."
 argument-hint: "대상 (예: render, video, quality)"
 ---
 

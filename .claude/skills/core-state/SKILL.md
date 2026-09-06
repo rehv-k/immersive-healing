@@ -1,6 +1,6 @@
 ---
 name: core-state
-description: "IH(몰입 힐링) 코어 상태·설정·입력 세션 계층. Use when: 상태 머신, 씬 전이, 일시정지, 설정 저장/클램프, comfortProfile, 포인터락, 전체화면, 탭 전환, localStorage, store, dispatch, publishSys, sceneState.ts, inputSession.ts, settings.ts, ih:settings:v1, 설정이 저장 안 될 때, Esc가 안 먹을 때, 전이가 거부될 때 등. Covers: src/core/**, src/types.ts, tests/sceneState.test.ts, tests/settings.test.ts."
+description: "IH(몰입 힐링) 코어 상태·설정·입력 세션 계층. Use when: 상태 머신, 씬 전이, 일시정지, 설정 클램프, comfortProfile, 포인터락, 전체화면, 탭 전환, store, dispatch, publishSys, sceneState.ts, inputSession.ts, ih:settings:v1, 설정이 저장 안 될 때, Esc가 안 먹을 때, 전이가 거부될 때 등. Covers: src/core/**, src/types.ts, tests/{sceneState,settings}.test.ts."
 argument-hint: "대상 (예: state, settings, input)"
 ---
 
