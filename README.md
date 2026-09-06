@@ -17,12 +17,15 @@ npm run dev         # http://localhost:5173  (?debug 로 측정 오버레이)
 
 ```bash
 npm test        # 단위 테스트 (설정 클램프 · 상태 전이 매트릭스 · 렌디션 선택 · 적응 히스테리시스)
-npm run build   # tsc + vite build + 번들 예산(≤300KB gzip) + 라이선스 허용목록 + 아키텍처 규칙 게이트
+npm run report  # TC 커버리지 리포트 → docs/report/ci-report.md (TC 문서 대조, orphan 게이트)
+npm run build   # tsc + vite build + 번들 예산(≤300KB gzip) + 라이선스 허용목록 + 아키텍처 규칙 + TC 리포트 게이트
 ```
+
+테스트는 제목의 `[TC-<모듈>-NN]` 태그로 `docs/tc/` 시험 문서와 자동 대조된다 — "이 코드가 어떤 요구를 지키는가"는 번호로 답한다.
 
 ## 문서
 
-`docs/` — GOAL → MRD → RFP(v1.2) → PRD(v1.1) → SRS(v1.1) 문서 체인 + 적대 감사 보고서(`docs/audit/`) + 개발 기록(`docs/dev/DEVLOG.md`). 구현 규범은 SRS, AI 협업 규칙 요약은 `CLAUDE.md`.
+`docs/` — GOAL → MRD → RFP(v1.2) → PRD(v1.1) → SRS(v1.2) → TC(`docs/tc/`) 문서 체인 + 설계 결정 기록(`docs/SDD.md`) + 적대 감사 보고서(`docs/audit/`) + 개발 기록(`docs/dev/DEVLOG.md`). 구현 규범은 SRS, 시험 권위는 TC 문서, AI 협업 컨텍스트는 `CLAUDE.md`(+`.claude/skills/` 5종).
 
 ## 현재 상태
 

@@ -1,6 +1,7 @@
 # SRS — Immersive Healing (가칭) · 1호 콘텐츠 「일몰」 MVP
 
-> **Software Requirements Specification** · v1.1 (2026-08-22) · 실용형 구현 명세
+> **Software Requirements Specification** · v1.2 (2026-09-06) · 실용형 구현 명세
+> **v1.2 개정**: SDLC 방법론 이식 — TC ID 가족(`TC-<모듈>-NN`)·시험 문서(`docs/tc/`)·자동 대조 리포트 신설(§1.2·§9.5). 기존 요구 ID·본문 무변경(append-only).
 > 문서 계보: [GOAL](../GOAL.md) → [MRD](../mrd/MRD.md) → [RFP](../rfp/RFP.md) → [PRD](../prd/PRD.md) → **SRS(본 문서)**
 > 기술 근거: 조사 [E](../rfp/research/E-browser-ux-constraints.md)·[F](../rfp/research/F-motion-sickness-accessibility.md)·[G](../rfp/research/G-performance-targets-analytics.md)·[H](../prd/research/H-rendering-stack.md)·[I](../prd/research/I-video-delivery-hosting.md)·[J](../prd/research/J-audio-app-architecture.md)
 > 코드 조각은 규범적 의사코드다 — 동작·계약이 규범이며, 문장 그대로의 구현을 강제하지 않는다.
@@ -18,6 +19,8 @@
 ### 1.2 요구사항 ID 체계
 
 `SRS-<모듈>-<번호>`. 모듈 코드: COR(core) / SCN(scene) / VID(video) / AUD(audio) / UI / QLT(quality) / ANL(analytics) / ERR(오류) / DEP(배포). 등급 **[필수]**/**[권장]**, PRD 출처(FR/NFR) 병기.
+
+**시험 ID (v1.2 신설)**: `TC-<모듈>-<번호>` — 같은 모듈 코드를 공유하며 `docs/tc/TC_<모듈>_*.md`가 정의를 소유한다(§9.5). 두 가족 모두 **append-only** — 번호 재배치·재사용 금지, 폐기는 취소선+대체 포인터.
 
 ### 1.3 확정·미정 사항 (v1.1 갱신)
 
@@ -529,6 +532,14 @@ interface VideoEntry { id: string; kind: 'video';
 ### 9.4 구현 금지 규칙 요약 (CLAUDE.md 원천 — v1.1 신설)
 
 `Audio.setVolume()`·`AudioListener.setMasterVolume()` 금지(버스만) / `gain.value` 직접 대입 금지 / MP3·MediaElementSource·5분급 통짜 버퍼 금지 / `visibilitychange→suspend()` 금지 / 오디오 스케줄을 rAF에 매달기 금지 / `RectAreaLight` 실사용 금지 / `<video loop>` 속성 금지(스왑 로직 소유) / 렌더타겟 재할당식 renderScale 변경 금지 / ui↔scene 상호 import 금지 / store 직접 write 금지(core 전용) / 씬 전환 0.5초 미만 급전환·섬광 금지.
+
+### 9.5 TC 시험 체계 (v1.2 신설 — SDLC 방법론 이식)
+
+- **정의 소유**: 시험 케이스는 `docs/tc/TC_<모듈>_*.md`가 정의한다(현행 6종: COR·QLT·VID·AUD·SCN·UI — 기준 모델은 `TC_COR_CoreStateSettings.md`). ANL·ERR·DEP는 해당 검증이 구체화되는 시점(분석 도입·배포 준비)에 발급한다.
+- **검증 방법 4종**(§9.2 어휘와 동일)이 각 TC의 레인을 정한다: **시험**(Vitest 자동)·**검사**(check-arch/코드 검사)·**시연**(수동 체크리스트)·**분석**(M0 실측). 자동 시험 레인의 TC만 테스트 태깅 대상이다.
+- **태깅·대조**: 시험 레인 TC는 테스트 제목에 완전형 `[TC-<모듈>-NN]`을 포함하고, `scripts/generate-report.mjs`가 vitest JUnit 결과와 TC 문서를 집합 대조해 `docs/report/ci-report.md`를 생성한다. **orphan(태그됐으나 문서 정의 없음) > 0 이면 빌드 실패**(`npm run build` 게이트 포함).
+- **권위**: 요구·시험의 권위는 SRS·TC 문서다. 생성 리포트는 특정 실행의 evidence일 뿐, 검사·시연·분석 유형을 자동 미커버/PASS로 재정의하지 않는다. TC 문서의 스크립트 경로·상태 표기는 초기 계획값이며 손으로 유지하지 않는다.
+- **동기화**: 코드 변경 시 갱신 대상 표·커밋 규약·체크리스트는 `CLAUDE.md` §9가 소유한다.
 
 ---
 

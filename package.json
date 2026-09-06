@@ -10,9 +10,10 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "npm run typecheck && vite build && node scripts/check-size.mjs && node scripts/check-licenses.mjs && node scripts/check-arch.mjs",
+    "build": "npm run typecheck && vite build && node scripts/check-size.mjs && node scripts/check-licenses.mjs && node scripts/check-arch.mjs && node scripts/generate-report.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "report": "node scripts/generate-report.mjs",
     "test:watch": "vitest",
     "check": "node scripts/check-arch.mjs && node scripts/check-licenses.mjs",
     "gen:media": "node scripts/gen-test-media.mjs",

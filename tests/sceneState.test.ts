@@ -17,7 +17,7 @@ describe('transition matrix', () => {
     ['exiting', 'gate'],
   ];
 
-  it('allows exactly the specified transitions', () => {
+  it('[TC-COR-01] allows exactly the specified transitions', () => {
     for (const from of ALL) {
       for (const to of ALL) {
         const should = allowed.some(([f, t]) => f === from && t === to);
@@ -26,11 +26,11 @@ describe('transition matrix', () => {
     }
   });
 
-  it('unsupported is terminal', () => {
+  it('[TC-COR-02] unsupported is terminal', () => {
     expect(TRANSITIONS.unsupported).toHaveLength(0);
   });
 
-  it('pause is only reachable in corridor/hall (SRS-COR-32)', () => {
+  it('[TC-COR-03] pause is only reachable in corridor/hall (SRS-COR-32)', () => {
     expect(canPauseIn('corridor')).toBe(true);
     expect(canPauseIn('hall')).toBe(true);
     expect(canPauseIn('gate')).toBe(false);

@@ -41,6 +41,15 @@
 - Playwright 통합 테스트(§9.2 권장 계층).
 - 매니페스트 기반 바이트 가중 진행률(현재 절차 생성 에셋이라 즉시 완료 — 실제 GLB/오디오 도입 시).
 
+## 2026-09-06 — SDLC 방법론 이식 (프로젝트_운영_방법론_이식_가이드라인.md 적용)
+
+- **이식 판정**: 규모 3.7k줄 → 경량판 코어(§E.4) + 스킬층까지 확장(사용자 요청). 기존 `SRS-<모듈>-NN` ID는 append-only 규율로 **유지**(FR 재번호화 기각 — SDD D-09).
+- **① 컨텍스트 층**: `CLAUDE.md` 9섹션 전면 개편(주석 트리·Invariants·계약 표면·결정 로그·동기화 규칙 표) + `.claude/skills/` 5종 신설(core-state / scene-video / audio-graph / tc-verification / requirement-docs).
+- **② 요구문서 층**: `TC-<모듈>-NN` 가족 신설, `docs/tc/` 6문서(COR·QLT·VID·AUD·SCN·UI — 기준 모델 COR 세트, 총 55 TC 정의). `docs/SDD.md` 신설(설계 결정 기록 D-01~09 — DEVLOG 결정 승격). SRS v1.2 추록(§1.2 시험 ID·§9.5 TC 체계 — 기존 본문 무변경).
+- **③ 검증 자동화 층**(pytest→Vitest 이식): 테스트 제목 `[TC-…]` 태깅(24개 전부) + `scripts/generate-report.mjs`(JUnit 집계→TC 문서 대조→`docs/report/ci-report.md`, **orphan=빌드 실패 게이트**, `npm run build`에 편입). 음성 시험으로 게이트 동작 확인(오타 태그 → exit 1).
+- **이식 중 잡은 함정 2건**(방법론 §C.7 유형): ① JUnit `classname=`이 `name=` 정규식에 선매칭 → 공백 경계 파싱으로 수정 ② TC 문서의 "다음 번호는 TC-X-NN부터" 문구가 정의로 오집계 → 번호만 표기하는 규칙화(tc-verification 스킬에 기록).
+- 검증: vitest 24 passed · orphan 0 · check-arch/licenses OK.
+
 ### 사용자 확인 필요 항목
 1. **실제 관람 검증 (환경 제약 3회로 이관)**: 이 세션의 브라우저 패널이 화면에 표시되지 않아 rAF(렌더 루프)·Pointer Lock·스크린샷 검증이 불가했음(비합성 탭에서는 브라우저가 이들을 정지시킴). 상태 머신·UI 동기화·오디오·영상 로드는 콘솔로 검증 완료. **아래 체크리스트로 직접 확인 필요**:
    ```bash

@@ -13,11 +13,11 @@ import {
 const DPR = 1;
 
 describe('adaptation', () => {
-  it('threshold aligns with NFR-1 target 45 (audit F-4)', () => {
+  it('[TC-QLT-01] threshold aligns with NFR-1 target 45 (audit F-4)', () => {
     expect(FPS_DOWN_THRESHOLD).toBe(45);
   });
 
-  it('scales down after 3 low windows', () => {
+  it('[TC-QLT-02] scales down after 3 low windows', () => {
     let s = initialAdapt('med', false);
     const startScale = s.renderScale;
     let changed = '';
@@ -30,7 +30,7 @@ describe('adaptation', () => {
     expect(s.renderScale).toBeLessThan(startScale);
   });
 
-  it('40..45 gap no longer stalls below target (fps 44 triggers downscale)', () => {
+  it('[TC-QLT-03] 40..45 gap no longer stalls below target (fps 44 triggers downscale)', () => {
     let s = initialAdapt('med', false);
     let changed = '';
     for (let i = 0; i < DOWN_WINDOWS; i++) {
@@ -41,7 +41,7 @@ describe('adaptation', () => {
     expect(changed).toBe('scale-down');
   });
 
-  it('drops preset only at scale floor, max twice, 30s apart', () => {
+  it('[TC-QLT-04] drops preset only at scale floor, max twice, 30s apart', () => {
     let s = initialAdapt('med', false);
     s = { ...s, renderScale: PRESET_SCALE_RANGE.med.min };
     let now = 0;
@@ -64,7 +64,7 @@ describe('adaptation', () => {
     expect(s.preset).toBe('low'); // already lowest anyway
   });
 
-  it('never auto-upgrades preset; only renderScale rises', () => {
+  it('[TC-QLT-05] never auto-upgrades preset; only renderScale rises', () => {
     let s = initialAdapt('med', false);
     s = { ...s, renderScale: 0.8 };
     let changed = '';
@@ -77,7 +77,7 @@ describe('adaptation', () => {
     expect(s.preset).toBe('med');
   });
 
-  it('manual preset never auto-drops preset', () => {
+  it('[TC-QLT-06] manual preset never auto-drops preset', () => {
     let s = initialAdapt('low', true);
     s = { ...s, renderScale: PRESET_SCALE_RANGE.low.min };
     for (let i = 0; i < DOWN_WINDOWS * 4; i++) {
