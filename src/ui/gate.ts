@@ -10,10 +10,10 @@ export interface GateCallbacks {
 }
 
 export function createGate(rootEl: HTMLElement, cb: GateCallbacks): { update(): void } {
-  const title = el('h1', { text: '일몰 · 상영관' });
+  const title = el('h1', { text: '일몰 · 몰입 홀' });
   const subtitle = el('p', {
     class: 'muted',
-    text: '웹을 위해 만들어진 몰입 전시 — 어두운 복도를 지나, 일몰이 흐르는 상영관으로.',
+    text: '웹을 위해 만들어진 몰입 전시 — 어두운 복도를 지나, 벽 전체가 하늘과 바다로 이어지는 타원의 홀로. 일몰에서 별이 뜨는 밤까지, 10분의 순환.',
   });
   const notice = el('p', {
     class: 'tiny muted',
@@ -46,7 +46,7 @@ export function createGate(rootEl: HTMLElement, cb: GateCallbacks): { update(): 
 
   const enterBtn = el('button', { class: 'primary', text: '입장하기', disabled: '' });
   enterBtn.addEventListener('click', () => cb.onEnter(false));
-  const directBtn = el('button', { class: 'ghost hidden', text: '바로 상영관 입장 (재방문)' });
+  const directBtn = el('button', { class: 'ghost hidden', text: '바로 홀 입장 (재방문)' });
   directBtn.addEventListener('click', () => cb.onEnter(true));
 
   const links = el('div', { class: 'row tiny' });

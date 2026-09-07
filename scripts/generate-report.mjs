@@ -19,6 +19,9 @@ const SUITES = [
   { file: 'tests/settings.test.ts', tc: 'TC_COR_CoreStateSettings.md', component: 'COR — 설정·프로필' },
   { file: 'tests/adaptation.test.ts', tc: 'TC_QLT_Adaptation.md', component: 'QLT — 품질 적응' },
   { file: 'tests/rendition.test.ts', tc: 'TC_VID_VideoRendition.md', component: 'VID — 렌디션 선택' },
+  { file: 'tests/hallGeometry.test.ts', tc: 'TC_SCN_WorldRender.md', component: 'SCN — 타원 홀 기하' },
+  { file: 'tests/skyCycle.test.ts', tc: 'TC_SCN_WorldRender.md', component: 'SCN — 하늘 순환' },
+  { file: 'tests/phaseMix.test.ts', tc: 'TC_AUD_AudioGraph.md', component: 'AUD — 위상 믹스' },
 ];
 
 const TC_ID_RE = /TC-([A-Z]+)-(\d+)/g;

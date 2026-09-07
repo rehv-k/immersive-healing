@@ -39,6 +39,7 @@ export interface Settings {
   motionBlur: boolean; // default false
   mouseSmoothing: boolean; // default false; true = 3-frame moving average
   bgAnimation: number; // 0..1; effective = min(value, preset cap)
+  breathGuide: boolean; // default false — 호흡 리듬 빛(바닥, 분당 6회) (SRS-COR-25)
   quality: 'auto' | Preset;
   masterVolume: number; // 0..1
   muted: boolean;

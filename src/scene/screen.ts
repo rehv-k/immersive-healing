@@ -1,8 +1,9 @@
-// scene/screen — surrounding wall-screen panorama + sunset pipeline (SRS-VID, v4).
-// The hall's walls (minus the entrance) are all screen surfaces; the procedural sunset
-// is computed in WORLD space along the wall-path, so sky, clouds and sea continue
-// seamlessly across the corners (사용자 결정: 직교 벽면 랩어라운드, 원통 아님).
-// Video mode (?video): the front wall plays the file; side walls stay procedural.
+// scene/screen — continuous wall-screen panorama + sunset pipeline (SRS-VID, v5).
+// Every wall ribbon carries the panorama arc as a vertex attribute (`aArc`), so the sky,
+// clouds and sea are one continuous image around the ellipse. The sky itself comes from
+// the shared uniforms fed by skyCycle (SRS-VID-8) — the floor/ceiling reflections sample
+// the same uniforms, so wall and reflection can never disagree.
+// Video mode (?video): the front ribbon plays the file; the rest stays procedural.
 
 import {
   LinearFilter,
@@ -16,6 +17,7 @@ import type { Rendition } from '../types';
 import type { ScreenSurface } from './world';
 import { store } from '../core/store';
 import { stepDown } from './renditionSelect';
+import { SKY_FUNCTIONS, SKY_UNIFORM_DECL, type SkyUniforms } from './skyShader';
 
 const SWAP_TRIGGER_S = 0.5;
 const SWAP_RAMP_S = 0.25;
@@ -24,113 +26,46 @@ const STALL_TIMEOUT_MS = 5000;
 const AVG_COLOR_INTERVAL_MS = 250;
 
 const VERT = /* glsl */ `
+  attribute float aArc;
   varying vec2 vUv;
   varying vec3 vWorldPos;
+  varying float vArc;
   void main() {
     vUv = uv;
+    vArc = aArc;
     vec4 wp = modelMatrix * vec4(position, 1.0);
     vWorldPos = wp.xyz;
     gl_Position = projectionMatrix * viewMatrix * wp;
   }
 `;
 
-// World-space panorama sunset. px runs along the wall path in band-height units;
-// py runs 0..1 over the screen band. All motion slow and flash-free.
 const FRAG = /* glsl */ `
+  ${SKY_UNIFORM_DECL}
   uniform sampler2D texA;
   uniform sampler2D texB;
   uniform float uMix;
   uniform float uProcedural;
-  uniform float uTime;
-  uniform vec2 uDir;
-  uniform float uBase;
   uniform float uBandBottom;
-  uniform float uBandH;
-  uniform float uSunDist;
   varying vec2 vUv;
   varying vec3 vWorldPos;
+  varying float vArc;
+
+  ${SKY_FUNCTIONS}
 
   vec3 srgbToLinear(vec3 c) { return pow(c, vec3(2.2)); }
-  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-  float noise(vec2 p) {
-    vec2 i = floor(p); vec2 f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
-               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-  }
-  float fbm(vec2 p) {
-    float v = 0.0; float a = 0.55;
-    for (int i = 0; i < 4; i++) { v += a * noise(p); p = p * 2.1 + 17.3; a *= 0.5; }
-    return v;
-  }
-
-  vec3 panoramaSunset(float px, float py, float t) {
-    float seaLine = 0.26;
-    float breathe = 0.5 + 0.5 * sin(t * 0.05);
-    float sunPx = uSunDist / uBandH;
-
-    vec3 zenith  = mix(vec3(0.07, 0.10, 0.24), vec3(0.05, 0.07, 0.19), breathe);
-    vec3 mid     = vec3(0.55, 0.26, 0.22);
-    vec3 horizon = mix(vec3(1.05, 0.52, 0.18), vec3(0.98, 0.42, 0.16), breathe);
-    // warmth falls off away from the sun along the panorama — sides go dusky
-    float away = clamp(abs(px - sunPx) / (uSunDist / uBandH), 0.0, 1.0);
-    horizon = mix(horizon, vec3(0.55, 0.25, 0.22), away * 0.55);
-    mid = mix(mid, vec3(0.30, 0.16, 0.20), away * 0.4);
-
-    float h = smoothstep(seaLine, 1.0, py);
-    vec3 col = mix(horizon, mid, smoothstep(0.0, 0.45, h));
-    col = mix(col, zenith, smoothstep(0.35, 1.0, h));
-
-    // sun disc + glow (only meaningful near the front wall)
-    vec2 d2 = vec2(px - sunPx, py - (seaLine + 0.10));
-    float d = length(d2);
-    float shimmer = 1.0 + 0.03 * sin(t * 0.7);
-    col += vec3(1.0, 0.72, 0.38) * 0.85 * smoothstep(1.1, 0.0, d);
-    col += vec3(1.25, 0.85, 0.5) * smoothstep(0.13 * shimmer, 0.085, d);
-
-    // drifting clouds — px is continuous across wall corners
-    float drift1 = fbm(vec2(px * 1.2 - t * 0.014, py * 9.0));
-    float band1 = smoothstep(0.5, 0.72, drift1) * smoothstep(0.85, 0.55, py) * smoothstep(seaLine + 0.05, seaLine + 0.22, py);
-    vec3 cloudLit = mix(vec3(0.85, 0.42, 0.28), vec3(0.30, 0.16, 0.20), smoothstep(seaLine, 0.8, py));
-    cloudLit = mix(cloudLit, cloudLit * 0.55, away);
-    col = mix(col, cloudLit, band1 * 0.75);
-    float drift2 = fbm(vec2(px * 2.2 + t * 0.02, py * 14.0 + 5.0));
-    float band2 = smoothstep(0.55, 0.8, drift2) * smoothstep(0.95, 0.6, py) * smoothstep(seaLine + 0.15, seaLine + 0.4, py);
-    col = mix(col, cloudLit * 0.7, band2 * 0.5);
-
-    // sea
-    if (py < seaLine) {
-      float depth = (seaLine - py) / seaLine;
-      vec3 seaNear = mix(vec3(0.62, 0.30, 0.16), vec3(0.34, 0.20, 0.18), away);
-      vec3 sea = mix(seaNear, vec3(0.06, 0.07, 0.12), smoothstep(0.0, 0.7, depth));
-      float swell = noise(vec2(px * 7.5, py * 60.0 + t * 0.35));
-      sea *= 0.92 + 0.16 * swell;
-      float pathW = mix(0.1, 0.5, depth);
-      float path = smoothstep(pathW, 0.0, abs(px - sunPx));
-      float sparkle = noise(vec2(px * 40.0, py * 220.0 - t * 1.1));
-      sparkle = smoothstep(0.72, 0.95, sparkle);
-      sea += vec3(1.1, 0.72, 0.4) * path * (0.25 + 0.75 * sparkle) * (1.0 - depth * 0.7);
-      col = sea;
-    }
-
-    // vertical edge softening only (horizontal vignette would seam the corners)
-    float vig = smoothstep(0.0, 0.1, py) * smoothstep(1.0, 0.92, py);
-    return col * mix(0.8, 1.0, vig);
-  }
 
   void main() {
     vec3 color;
     if (uProcedural > 0.5) {
-      float pd = dot(vWorldPos.xz, uDir) + uBase;
-      float px = pd / uBandH;
+      float px = vArc / uBandH;
       float py = clamp((vWorldPos.y - uBandBottom) / uBandH, 0.0, 1.0);
-      color = panoramaSunset(px, py, uTime);
+      color = panorama(px, py, 1.0);
     } else {
       vec3 a = srgbToLinear(texture2D(texA, vUv).rgb);
       vec3 b = srgbToLinear(texture2D(texB, vUv).rgb);
       color = mix(a, b, uMix);
     }
-    gl_FragColor = vec4(color * 1.6, 1.0);
+    gl_FragColor = vec4(color * 1.15, 1.0); // exposure (v5: 1.6 → 1.15, floor/ceiling add light)
   }
 `;
 
@@ -141,8 +76,8 @@ interface VideoSlot {
 }
 
 interface Pano {
-  totalLen: number;
-  sunDist: number;
+  panoLen: number;
+  sunArc: number;
   bandBottom: number;
   bandHeight: number;
 }
@@ -160,7 +95,6 @@ export class ScreenPlayer {
   private blacklist = new Set<Rendition>();
   private playing = false;
   private procedural = false;
-  private time = 0;
   private avgCanvas: HTMLCanvasElement;
   private lastAvgAt = 0;
   private rvfcSupported = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
@@ -172,6 +106,7 @@ export class ScreenPlayer {
     surfaces: ScreenSurface[],
     pano: Pano,
     spillLights: PointLight[],
+    sky: SkyUniforms,
     rendition: Rendition,
     opts: { mediaBase?: string; preferVideo?: boolean } = {},
   ) {
@@ -184,16 +119,12 @@ export class ScreenPlayer {
     for (const s of surfaces) {
       const mat = new ShaderMaterial({
         uniforms: {
+          ...sky, // shared IUniform objects (skyCycle → every sky material at once)
           texA: { value: null },
           texB: { value: null },
           uMix: { value: 0 },
           uProcedural: { value: 1 },
-          uTime: { value: 0 },
-          uDir: { value: s.dir },
-          uBase: { value: s.base },
           uBandBottom: { value: pano.bandBottom },
-          uBandH: { value: pano.bandHeight },
-          uSunDist: { value: pano.sunDist },
         },
         vertexShader: VERT,
         fragmentShader: FRAG,
@@ -237,7 +168,7 @@ export class ScreenPlayer {
     return { el, tex, rvfcId: null };
   }
 
-  /** Video applies to the FRONT wall only; side walls always run the panorama. */
+  /** Video applies to the FRONT ribbon only; the rest of the wall always runs the panorama. */
   async load(): Promise<boolean> {
     if (!this.preferVideo) {
       this.enableProcedural();
@@ -392,12 +323,13 @@ export class ScreenPlayer {
     void b.el.play();
   }
 
-  update(dt: number): void {
-    this.time += dt;
-    for (const m of this.materials) m.uniforms.uTime!.value = this.time;
-
+  /**
+   * Per-frame: video ramp/gating + spill lights. `skyAverage` is the sky cycle's mean
+   * emitted colour (procedural mode); video mode samples the frame instead.
+   */
+  update(dt: number, skyAverage: [number, number, number]): void {
     if (this.procedural) {
-      this.updateSpillProcedural();
+      this.applySpill(skyAverage[0], skyAverage[1], skyAverage[2]);
       return;
     }
     if (!this.slots) return;
@@ -499,15 +431,10 @@ export class ScreenPlayer {
     }
   }
 
-  private updateSpillProcedural(): void {
-    const cycle = 0.5 + 0.5 * Math.sin(this.time * 0.05);
-    this.applySpill(0.9 - 0.1 * cycle, 0.45 - 0.08 * cycle, 0.2);
-  }
-
   private applySpill(r: number, g: number, b: number): void {
-    const intensity = Math.min(2.2, (r + g + b) * 1.1 + 0.2);
+    const intensity = Math.min(2.2, (r + g + b) * 1.1 + 0.15);
     for (const light of this.spillLights) {
-      light.color.setRGB(Math.max(0.05, r), Math.max(0.04, g), Math.max(0.03, b));
+      light.color.setRGB(Math.max(0.03, Math.min(1, r)), Math.max(0.02, Math.min(1, g)), Math.max(0.02, Math.min(1, b)));
       light.intensity = intensity;
     }
   }

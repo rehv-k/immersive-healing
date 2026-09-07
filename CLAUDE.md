@@ -2,11 +2,11 @@
 
 ## 1. 프로젝트 개요
 
-웹 1인칭 몰입 힐링 전시 MVP — 1호 콘텐츠 「일몰」. 방문자가 게이트→복도→상영관을 걸어 들어가 랩어라운드 월 스크린의 일몰 영상과 공간 음향 속에서 쉬는 경험. 힐링(이완·휴식) 목적 단일 경험이며, 치유·효능 주장은 금지(PRD FR-90).
+웹 1인칭 몰입 힐링 전시 MVP — 1호 콘텐츠 「일몰」. 방문자가 게이트→복도→**타원 몰입 홀**(입구 제외 벽 전체가 하나의 연속 스크린, 바닥·천장이 반사 — 국중박 실감1관 참조, 조사 K)을 걸어 들어가 10분 하늘 순환(골든아워→별밤→새벽)과 공간 음향 속에서 쉬는 경험. 힐링(이완·휴식) 목적 단일 경험이며, 치유·효능 주장은 금지(PRD FR-90).
 
 - 스택: TypeScript strict + Vite + three.js **0.185.1 정확 핀** + postprocessing 6.x + 자체 pub/sub + Web Audio(자체 GainNode 버스). React/R3F/XState/Howler 미도입.
-- 문서 체인: docs/GOAL.md → mrd/MRD.md → rfp/RFP.md(v1.2) → prd/PRD.md(v1.1) → **srs/SRS.md(규범)** → **tc/**(시험). 개발 기록·역반영은 docs/dev/DEVLOG.md. 설계 결정은 docs/SDD.md.
-- 현 단계: MVP 코드 구현 완료(테스트 24통과, 번들 ≤300KB). 다음: M0a 측정 → M1 아트.
+- 문서 체인: docs/GOAL.md → mrd/MRD.md → rfp/RFP.md(v1.3) → prd/PRD.md(v1.2) → **srs/SRS.md(v1.3, 규범)** → **tc/**(시험). 개발 기록·역반영은 docs/dev/DEVLOG.md. 설계 결정은 docs/SDD.md.
+- 현 단계: **v5 몰입 홀**(사용자 결정 2026-09-06 — 타원 랩어라운드 스크린·반사 바닥·10분 하늘 순환) 구현 완료, 테스트 35통과, 번들 ≤300KB. 다음: M0a 측정(반사 비용 포함) → M1 아트.
 
 ## 2. 디렉토리 구조 (주석 트리)
 
@@ -21,15 +21,20 @@ src/
     inputSession.ts     # ★Pointer Lock·Fullscreen·visibility API 전유(다른 파일 호출 금지)
   scene/                # three.js — store 구독, sys.*만 발행
     renderer.ts         # WebGLRenderer + 후처리 체인. 톤매핑은 말단 1회(NoToneMapping)
-    world.ts            # 홀·복도 공간(랩어라운드 월 스크린 — 사용자 결정 v4)
-    player.ts           # 이동·시점(e.code + IME 가드, Q/E/R/F 키보드 시점)
+    world.ts            # ★타원 몰입 홀 v5(연속 리본 스크린·반사 바닥/천장·복도) (SRS-SCN-25)
+    hallGeometry.ts     # ★타원 호 길이 파노라마 좌표 순수 함수 (TC-SCN-08~11)
+    skyCycle.ts         # ★10분 하늘 순환 순수 함수(골든→별밤→새벽, ≤5%/s) (TC-SCN-12~14)
+    skyShader.ts        # 공유 GLSL panorama() + 공유 유니폼(벽·바닥·천장이 같은 하늘)
+    surfaces.ts         # ★해석적 반사 바닥·천장 — 추가 렌더 패스 0 (SRS-SCN-26, D-11)
+    player.ts           # 이동·시점(e.code + IME 가드, Q/E/R/F 키보드 시점, WalkRegion 충돌)
     screen.ts           # ★비디오 A/B 스왑 — <video loop> 금지, rVFC 게이팅 (SRS-VID-2~7)
     quality.ts          # 프리셋 적용·renderScale(재할당 금지 — viewport 부분 렌더)
     adaptation.ts       # ★적응 히스테리시스 순수 함수(45/55, 강등 최대2회·30s) (TC-QLT-01~06)
     renditionSelect.ts  # 렌디션 3종 선택 순수 함수 (TC-VID-01~06)
   audio/                # Web Audio — store 구독, sys.*만 발행
     graph.ts            # ★3단 버스 userVolume→duck→mute(+visibilityBus). ctx 생성 후 setContext
-    ambience.ts         # 앰비언스 레이어(OGG, AudioBufferSourceNode loop)
+    ambience.ts         # 앰비언스 5레이어 합성(waves·wind·pad·nightAir·drone)
+    phaseMix.ts         # ★태양 고도→레이어 게인 순수 함수(밤 총합 ≤ 낮) (TC-AUD-09~10)
     positional.ts       # 정위 음원 ≤8 — distanceModel='linear' 즉시 명시 + spatialBus 재배선
     scheduler.ts        # ctx.currentTime 기준 스케줄(rAF 비의존)
   ui/                   # DOM 오버레이 — store에 액션만 발행(scene/audio import 금지)
@@ -83,7 +88,7 @@ docs/report/            # 근거·evidence — ci-report.md(자동 생성), M0 �
 
 ```bash
 npm run dev        # vite dev 서버
-npm test           # vitest 단위 시험(24개, 전부 순수 함수)
+npm test           # vitest 단위 시험(35개, 전부 순수 함수)
 npm run report     # ★TC 커버리지 리포트 → docs/report/ci-report.md (orphan 게이트)
 npm run check      # check-arch + check-licenses
 npm run typecheck  # tsc --noEmit
@@ -111,7 +116,11 @@ npm run gen:media  # 테스트 미디어 생성
 - 씬 전환·밝기 변화는 0.5초 이상 페이드. 1초 3회 초과 섬광 금지(광과민 안전).
 - renderScale 변경 시 렌더타겟 재할당 금지 — 최대 크기 1회 할당 + viewport 부분 렌더.
 - 톤매핑은 파이프라인 말단 1회(렌더러 NoToneMapping + ToneMappingEffect ACES).
-- **[랩어라운드 월 스크린 — 사용자 결정 v4, 2026-08-22]** 단일 평면 스크린이 아니라 상영관 벽면 파노라마. 되돌리지 말 것(devlog 결정 기록 참조).
+- **[타원 몰입 홀 — 사용자 결정 v5, 2026-09-06 · SDD D-10~12]** 홀은 타원(15×11m, 둘레 ≈82m), 입구 제외 벽 전체가 **하나의 연속 리본 스크린**(밴드 0.25~6.25m). 파노라마 좌표는 각도가 아니라 **실제 호 길이**(장축 벽 늘어짐 방지). 바닥·천장은 **해석적 반사**(뷰 광선 대칭→타원 실린더 교차→같은 panorama() 평가) — 미러 카메라·추가 렌더 패스 금지(45fps 목표 위험, D-11 반증 기록). High 3탭/Low 1탭·천장 off는 프리셋 게이트. v4(직교 5세그먼트)는 Superseded — 되돌리지 말 것.
+- **[하늘 시간 순환 — SRS-VID-8]** skyParams(t) 순수 함수, 주기 600s, t=0=t=600(무이음). 채널당 초당 변화 ≤5%·고도 ≤0.35°/s(TC-SCN-13이 전 주기 검증 — 키프레임 수정 시 이 상한 먼저 확인). 별·달은 시민박명(−3°) 전 금지. 시간은 corridor·hall·비일시정지에서만 진행. 벽·바닥·천장은 **하나의 공유 유니폼**을 읽는다(불일치 금지).
+- **[호흡 리듬 빛 — SRS-COR-25]** breathGuide 설정(기본 off), hall·비일시정지에서만 바닥 uBreath 구동(주기 10s=분당 6회). 효능 주장 금지 — 문구는 '이완' 수준(FR-90).
+
+**오디오 위상 연동 (SRS-AUD-9, TC-AUD-09~10):** 앰비언스 게인은 gainsForElevation(고도) 순수 함수만 — 레이어 상한표(GAIN_CEILING)·밤 총합 ≤ 낮 불변식이 시험으로 고정됨. 정위 음원은 벽면 앵커 5곳(전방=태양)·시각 정합.
 
 **적응 정책 (TC-QLT-01~06):** 하향 임계 45fps(NFR-1 정렬)·3윈도우, 프리셋 강등은 scale 플로어에서만·최대 2회·30s 간격, **자동 상향은 renderScale만**(프리셋 상향은 수동 전용 — 감사 D6). 성능-품질 충돌 시 양보 순서: 화질 → 공간 장식 → fps(감사 D5).
 

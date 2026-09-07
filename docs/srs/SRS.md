@@ -2,6 +2,7 @@
 
 > **Software Requirements Specification** · v1.2 (2026-09-06) · 실용형 구현 명세
 > **v1.2 개정**: SDLC 방법론 이식 — TC ID 가족(`TC-<모듈>-NN`)·시험 문서(`docs/tc/`)·자동 대조 리포트 신설(§1.2·§9.5). 기존 요구 ID·본문 무변경(append-only).
+> **v1.3 개정 (2026-09-06 — PRD v1.2 FR-38·39·54 전개, v5 몰입 홀)**: SRS-SCN-25(타원 홀·연속 스크린), SRS-SCN-26(해석적 반사 바닥·천장), SRS-VID-8(하늘 시간 순환), SRS-AUD-9(위상 연동 믹스), SRS-COR-25(breathGuide 설정) 신설. 기존 요구 무변경. 근거: [조사 K](../prd/research/K-immersive-hall-reference.md), 설계 결정 [SDD D-10~14](../SDD.md).
 > 문서 계보: [GOAL](../GOAL.md) → [MRD](../mrd/MRD.md) → [RFP](../rfp/RFP.md) → [PRD](../prd/PRD.md) → **SRS(본 문서)**
 > 기술 근거: 조사 [E](../rfp/research/E-browser-ux-constraints.md)·[F](../rfp/research/F-motion-sickness-accessibility.md)·[G](../rfp/research/G-performance-targets-analytics.md)·[H](../prd/research/H-rendering-stack.md)·[I](../prd/research/I-video-delivery-hosting.md)·[J](../prd/research/J-audio-app-architecture.md)
 > 코드 조각은 규범적 의사코드다 — 동작·계약이 규범이며, 문장 그대로의 구현을 강제하지 않는다.
@@ -185,6 +186,8 @@ interface SceneSlice {
   - `TRIGGER_hallEntry`: 통과 시 `corridor→hall` 전이를 발생시키는 박스 볼륨 — "도보 도달"의 정의.
   - `BOUNDS_viewing`: 관람 영역 — 정위 음원 `maxDistance` 산출 기준(§3.9).
   - **[변경 2026-08-22 — 코드 역반영] 복도 유효 보행 거리 = 도보 10~15초 × 이동속도 '보통'(2.0 m/s) ≈ 20~30m** (현 24m). 이동 속도 3단도 1.2/2.0/3.0 m/s로 상향 — 아트가 만족해야 할 제약(PRD FR-22 변경분).
+- **SRS-SCN-25 [필수]** (v1.3 신설 — PRD FR-38) **타원 몰입 홀·연속 스크린**: 홀 평면은 타원(반축 A×B, 기준값 15m×11m — 둘레 ≈82m), 입구는 +z 정점(복도 쪽)에 폭 2·`DOOR_HALF_WIDTH`(4.8m)의 틈. 벽 스크린은 입구 틈을 제외한 **둘레 전체를 잇는 리본 메시**이며 밴드 높이는 `BAND_BOTTOM`~`BAND_TOP`(0.25~6.25m). 파노라마 좌표는 입구 오른쪽 가장자리에서 시계 방향으로 잰 **실제 호 길이**(늘어짐 없이 연속). 밴드 위(6.25m~천장 8m)는 무광 어두운 벽, 아래는 어두운 실. 홀 내부에 기둥·보 등 시선 차폐물 없음(벤치는 무릎 높이 이하). 관람 영역은 타원 내부(벽 여유 0.7m). 검증: 시험(TC-SCN-08~11 기하) + 시연.
+- **SRS-SCN-26 [필수]** (v1.3 신설 — PRD FR-38) **해석적 반사 바닥·천장**: 바닥·천장은 스크린을 반사하되 **추가 렌더 패스·렌더타겟을 쓰지 않는다** — 뷰 광선을 면에 대칭시켜 타원 실린더와 교차한 점을 같은 파노라마 함수로 평가한다(프레넬 가중, High 프리셋에서 3탭 러프니스 블러, Low에서는 단일 탭 + 천장 반사 비활성). 반사는 벽과 **같은 하늘 파라미터**를 읽어 불일치가 없어야 한다. 검증: 검사(코드) + 시연 + M0a 비용 측정.
 
 ### 3.6 core/settings (SRS-COR-2x)
 
@@ -214,6 +217,7 @@ interface SceneSlice {
 - **SRS-COR-22 [필수]** 쓰기 디바운스 300ms + **`pagehide`/`visibilitychange:hidden`에서 보류 쓰기 즉시 플러시**(v1.1). try/catch 인메모리 폴백. 저장 차단 환경에서는 매 방문이 첫 방문 경로가 됨을 전제(로딩 전략 최악 경로).
 - **SRS-COR-23 [필수]** `'sensitive'` 강제 효과: headBob 0, cameraExtras/motionBlur/mouseSmoothing false, bgAnimation ≤0.3, 자동 카메라 연출 비활성. 저감 항목 중 하나라도 프로필 값과 불일치하게 사용자가 수정하면 `'custom'` + `comfortTouchedByUser=true`.
 - **SRS-COR-24 [필수]** `prefers-reduced-motion` change 리스너로 런타임 반영 — 단 `comfortTouchedByUser === true`면 자동 변경하지 않고 알림만.
+- **SRS-COR-25 [권장]** (v1.3 신설 — PRD FR-54) 설정 필드 `breathGuide: boolean`, 기본 `false`, 비불리언 입력은 기본값 폴백(§3.6 필드 단위 규칙). true이고 `hall`·비일시정지일 때만 바닥 셰이더의 호흡 고리(`uBreath`, 주기 10s = 분당 6회)를 구동, 그 외에는 0. 편안함 프로필 강제 세트에는 포함하지 않는다. 검증: 시험(TC-COR-16) + 시연.
 
 ---
 
@@ -254,6 +258,7 @@ pw = 스크린의 예상 화면 픽셀 폭
   - 탭 복귀 시 `A.ended || A.currentTime ≥ duration−0.05` → 강제 리셋(`currentTime=0; play(); uMix=0`).
   - rVFC 1초 이상 미도래 → 워치독이 스왑 상태 리셋.
   - B 미준비 폴백: `A.ended` 이벤트에서 `A.currentTime=0; A.play()` **하드컷 1회 + 경고 로그** (`loop` 속성 사용 금지 — VID-2와 정합).
+- **SRS-VID-8 [필수]** (v1.3 신설 — PRD FR-39) **하늘 시간 순환**: 절차 파노라마는 순수 함수 `skyParams(t)`가 정하는 파라미터(태양 고도·팔레트·별·달)로 그려지며 주기 `CYCLE_SECONDS`=600s. 태양 고도 키프레임은 골든아워(+6°)→일몰(0°)→시민박명→블루아워(−6~−9°)→밤(−16°)→새벽 복귀이며 **t=0과 t=주기 값이 일치**(무이음 루프). 파라미터의 초당 변화는 채널당 **≤5%**, 고도 ≤0.35°/s(SCN-23 정합). 별·달은 시민박명(−3°) 이전엔 0. 시간은 `corridor`·`hall`에서 비일시정지일 때만 진행하고 gate·paused에서 정지. 모든 하늘 재질(벽·바닥·천장)은 **하나의 공유 유니폼 집합**을 읽는다. 검증: 시험(TC-SCN-12~14) + 시연.
 
 ### 3.9 audio (SRS-AUD)
 
@@ -275,6 +280,7 @@ pw = 스크린의 예상 화면 픽셀 폭
 - **SRS-AUD-6 [필수]** 씬 믹스: gate→corridor 앰비언스 페이드 인 2~4초 + 유도 정위 음원 시작, corridor→hall 전체 사운드스케이프 크로스페이드 ~2초. 상태 머신 훅에서 트리거.
 - **SRS-AUD-7 [필수]** **[변경 2026-08-22 — 사용자 결정, 코드 역반영]** 소리는 탭이 보일 때만: 버스 체인 말단에 `visibilityBus`를 추가하고 `visibilitychange`에서 **게인만** 페이드(숨김 0.25초→0, 복귀 0.6초→1). `suspend()` 호출은 여전히 금지(클럭·스케줄 유지 목적은 불변). `ctx.onstatechange` — `'suspended'`는 다음 사용자 제스처에서 resume, **`'closed'`는 그래프 전체 재구성**. 게이트 클릭에서 최초 resume.
 - **SRS-AUD-8 [필수]** (v1.1 — [권장]에서 승격) `audio-base`(앰비언스 베이스+유도 음원)는 입장 가능 조건에 포함(§3.5 SCN-20).
+- **SRS-AUD-9 [필수]** (v1.3 신설 — PRD FR-39, R-3) **위상 연동 믹스·배치**: 앰비언스는 5레이어(waves·wind·pad·nightAir·drone)이며 레이어별 게인은 순수 함수 `gainsForElevation(태양 고도)`가 정한다 — 어떤 고도에서도 레이어 게인은 상한표(`GAIN_CEILING`)를 넘지 않고 **총합은 낮(골든아워) 믹스 이하**(밤이 더 커지지 않음). 게인 변화는 ctx 시계 램프(≥2s). 정위 음원은 홀 벽면 앵커 5곳(전방=태양 방향, 좌·우, 후방 좌·우)에 두어 시각 단서와 위치가 일치한다(조사 K §1.3). 검증: 시험(TC-AUD-09~10) + 시연.
 
 ### 3.10 ui (SRS-UI)
 
@@ -580,3 +586,5 @@ interface VideoEntry { id: string; kind: 'video';
 6. 서비스 이름·도메인 — 배포 준비 단계. 취득 시 VD-1·VD-2 수행.
 7. **하한 실기(Iris Xe급) 확보 방법·시점** — M0b 전제 (v1.1 추가).
 8. Safari macOS — 실기 확인 후 "권장"↔"미지원 명시" 재분류.
+9. **(v1.3) 반사 바닥·천장 셰이더 비용 실측** — M0a V5 확장: 프리셋별 프레임 비용, 하한 장비에서 Low(1탭·천장 off) 충족 여부. 미달 시 양보 순서(화질→장식→fps)에 따라 천장 반사→바닥 탭 순으로 축소.
+10. **(v1.3) 실영상 채택 시 소스 요구** — 연속 곡면 파노라마이므로 정면 24m 리본만 영상, 나머지는 절차 하늘. 파노라마/멀티면 소스 여부는 사용자 결정 항목(DEVLOG).

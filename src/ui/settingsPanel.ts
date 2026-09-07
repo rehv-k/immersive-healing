@@ -70,6 +70,7 @@ export function createSettingsPanel(rootEl: HTMLElement): void {
     toggle('모션 블러', (s) => s.motionBlur, (v) => patch({ motionBlur: v })),
     toggle('마우스 스무딩', (s) => s.mouseSmoothing, (v) => patch({ mouseSmoothing: v })),
     slider('배경 애니메이션', 0, 1, 0.05, (s) => s.bgAnimation, (v) => patch({ bgAnimation: v })),
+    toggle('호흡 리듬 빛 — 바닥의 빛이 천천히(분당 6회) 오르내려요', (s) => s.breathGuide, (v) => patch({ breathGuide: v })),
     select('품질', [['auto', '자동'], ['low', '낮음'], ['med', '보통'], ['high', '높음']], (s) => s.quality, (v) => patch({ quality: v })),
     slider('볼륨', 0, 1, 0.02, (s) => s.masterVolume, (v) => patch({ masterVolume: v })),
     toggle('음소거 (M)', (s) => s.muted, (v) => patch({ muted: v })),

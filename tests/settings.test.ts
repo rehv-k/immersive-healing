@@ -46,6 +46,12 @@ describe('sanitizeSettings', () => {
     expect(sanitizeSettings({ invertY: 1 }).invertY).toBe(false);
   });
 
+  it('[TC-COR-16] breathGuide defaults off and rejects non-boolean values', () => {
+    expect(defaultSettings().breathGuide).toBe(false);
+    expect(sanitizeSettings({ breathGuide: 'on' }).breathGuide).toBe(false);
+    expect(sanitizeSettings({ breathGuide: true }).breathGuide).toBe(true);
+  });
+
   it('[TC-COR-10] prefers-reduced-motion drives defaults', () => {
     const d = defaultSettings(true);
     expect(d.comfortProfile).toBe('sensitive');

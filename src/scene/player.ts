@@ -5,6 +5,7 @@
 import { Box3, Euler, PerspectiveCamera, Vector3 } from 'three';
 import type { AppState, Settings } from '../types';
 import { LOOK_RAD_PER_PX, MOVE_SPEED_MPS } from '../core/settings';
+import type { WalkRegion } from './world';
 
 const INPUT_RAMP_S = 0.08; // <=80ms ramp — the redefined "smoothness" (RFP R-2 v1.2)
 const KEY_LOOK_RAD_PER_S = (90 * Math.PI) / 180; // 90 deg/s (SRS-SCN-31)
@@ -21,7 +22,7 @@ export class Player {
   private smoothBufX: number[] = [];
   private smoothBufY: number[] = [];
   private vel = new Vector3();
-  private walkables: Box3[] = [];
+  private regions: WalkRegion[] = [];
   private obstacles: Box3[] = [];
   private bobPhase = 0;
   private enabled = false;
@@ -36,8 +37,9 @@ export class Player {
     addEventListener('blur', () => this.keys.clear());
   }
 
-  setWalkables(w: Box3[], obstacles: Box3[] = []): void {
-    this.walkables = w;
+  /** Walkable = union of regions (boxes, ellipses…) minus solid obstacles (SRS-SCN-22). */
+  setWalkables(regions: WalkRegion[], obstacles: Box3[] = []): void {
+    this.regions = regions;
     this.obstacles = obstacles;
   }
 
@@ -197,19 +199,8 @@ export class Player {
     for (const o of this.obstacles) {
       if (p.x >= o.min.x && p.x <= o.max.x && p.z >= o.min.z && p.z <= o.max.z) return false;
     }
-    for (const box of this.walkables) {
-      if (
-        p.x >= box.min.x + PLAYER_RADIUS - 0.5 &&
-        p.x <= box.max.x - PLAYER_RADIUS + 0.5 &&
-        p.z >= box.min.z &&
-        p.z <= box.max.z &&
-        p.x >= box.min.x &&
-        p.x <= box.max.x
-      ) {
-        // radius check against x walls only where box is authoritative
-        if (p.x >= box.min.x + PLAYER_RADIUS && p.x <= box.max.x - PLAYER_RADIUS) return true;
-      }
-    }
+    // Regions already include the wall clearance (player radius) in their insets.
+    for (const r of this.regions) if (r.contains(p.x, p.z)) return true;
     return false;
   }
 }

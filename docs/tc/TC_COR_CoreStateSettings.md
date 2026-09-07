@@ -53,6 +53,7 @@
 | **TC-COR-10** | SRS-COR-24 | 시험 | — | ① `defaultSettings(true)`(reduced-motion) 호출 | comfortProfile='sensitive', bgAnimation≤0.3 | 두 조건 모두 충족 → Pass |
 | **TC-COR-11** | SRS-COR-23 | 시험 | — | ① 저감 항목이 켜진 설정에 sensitive 프로필 적용 | headBob=0, motionBlur=false, bgAnimation≤0.3 | 강제 세트 전부 적용 → Pass |
 | **TC-COR-12** | SRS-COR-23 | 시험 | — | ① sensitive 적용 상태에서 저감 항목 1개 수정 ② `resolveComfortProfile` 판정 | 수정 전 'sensitive', 수정 후 'custom' | 판정 전이 정확 → Pass |
+| **TC-COR-16** | SRS-COR-25 | 시험 | v1.1 신설 | ① 기본값 조회 ② `breathGuide`에 문자열·true 주입 | 기본 false, 비불리언→false, true 보존 | 3조건 → Pass |
 
 ### 3.4 소유권·생명주기 (자동 시험 밖 — 다른 레인)
 
@@ -85,5 +86,6 @@ A(3.1 상태 머신) → B(3.2 설정) → C(3.3 프로필) — 상호 독립, �
 | SRS-COR-11 | TC-COR-13 | `scripts/check-arch.mjs` (검사) |
 | SRS-COR-50 | TC-COR-14 | `scripts/check-arch.mjs` (검사) |
 | SRS-COR-22 | TC-COR-15 | 수동 시연 |
+| SRS-COR-25 | TC-COR-16 | `tests/settings.test.ts` |
 
-> 번호 규율: 다음 COR TC 번호는 **16번부터** 발급한다. 재배치·재사용 금지, 폐기는 취소선+대체 포인터.
+> 번호 규율: 다음 COR TC 번호는 **17번부터** 발급한다. 재배치·재사용 금지, 폐기는 취소선+대체 포인터.

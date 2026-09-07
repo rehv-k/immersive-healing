@@ -35,6 +35,7 @@ argument-hint: "대상 (예: state, settings, input)"
 | `masterVolume` | 0~1 / 0.8 | userVolume 버스 입력 |
 | `comfortProfile` | normal·sensitive·custom | sensitive는 headBob 0·motionBlur off·bgAnimation ≤0.3 강제 |
 | `quality` | auto·low·med·high | 수동 선택 시 자동 강등 금지(TC-QLT-06) |
+| `breathGuide` | bool / false | 호흡 리듬 빛(분당 6회) — 기본 off, 효능 문구 금지(TC-COR-16, SRS-COR-25) |
 
 - 저장: localStorage 단일 키 `ih:settings:v1`, 디바운스 300ms + `pagehide` 즉시 플러시(TC-COR-15).
 - 손상 주입 대응은 **필드 단위** 폴백 — 전체 객체 리셋 아님(`TC-COR-06`).
