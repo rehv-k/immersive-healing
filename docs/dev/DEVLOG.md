@@ -91,5 +91,5 @@
    - [ ] Esc → 일시정지 메뉴(소리 볼륨 낮아짐), 1.5초 후 "계속" 활성 → 복귀
    - [ ] 탭 전환 → 소리 유지, 복귀 시 "클릭하여 시점 복귀" 프롬프트
    - [ ] M 음소거, 설정 변경 즉시 반영·새로고침 후 유지, ?debug 오버레이 fps 표시
-2. **코드 라이선스 결정** (현재 UNLICENSED/private).
+2. ~~**코드 라이선스 결정** (현재 UNLICENSED/private).~~ **[종결 2026-09-10 — MIT 채택.** 원격 저장소(github.com/rehv-k/immersive-healing) 생성 시 사용자가 MIT를 선택했고, 그 `LICENSE`(Copyright 2026 rehv)를 저장소 대장으로 삼아 `package.json`의 `license`를 MIT로 정합했다. `private: true`는 **유지** — 이건 npm 레지스트리 실수 배포 방지 플래그이며 소스 공개 여부와 무관하다(이 프로젝트는 npm 패키지로 배포하지 않는다).**]**
 3. **실제 일몰 영상·사운드 소스 채택**: 현재 합성 테스트 미디어(ffmpeg 절차 생성 + 런타임 합성 앰비언스). Pexels/Pixabay·Freesound 소스 선정은 라이선스 확인이 필요한 사용자 결정 (PRD §6.1 기준 ⑥ 태양 이동 포함).

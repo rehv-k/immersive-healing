@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "description": "Immersive Healing (working title) - walkable web exhibition MVP. Sunset #1.",
   "engines": {
     "node": ">=20"
