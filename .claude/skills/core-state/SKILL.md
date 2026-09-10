@@ -14,7 +14,7 @@ argument-hint: "대상 (예: state, settings, input)"
 
 | 단계 | 파일 | 역할 |
 |---|---|---|
-| 1 | `src/types.ts` | `Action` 유니언(13종)·`AppState`·`Settings` — 액션 추가는 여기부터 |
+| 1 | `src/types.ts` | `Action` 유니언(11종)·`AppState`·`Settings` — 액션 추가는 여기부터 |
 | 2 | `src/core/store.ts` | pub/sub — `get`/`dispatch`(ui)/`publishSys`(scene·audio)/`subscribe({immediate:true} 기본)` |
 | 3 | `src/core/sceneState.ts` | 6상태·허용 8전이 매트릭스(`TRANSITIONS`·`canTransition`·`canPauseIn`) |
 | 4 | `src/core/settings.ts` | `sanitizeSettings`(필드 단위 클램프)·`defaultSettings(reducedMotion?)`·comfort 프로필 |
@@ -43,6 +43,8 @@ argument-hint: "대상 (예: state, settings, input)"
 ## 주의·함정
 
 - **store.coreSet을 core 밖에서 호출** — check-arch가 빌드를 깬다. ui는 dispatch, scene/audio는 publishSys만.
+- **발행처 없는 액션 추가** — check-arch의 데드 액션 게이트가 빌드를 깬다(TC-UI-07). 유니언에 멤버를 넣기 전에 발행처를 먼저 잇는다.
+- **입장·재잠금을 액션으로 만들지 말 것** — 둘은 클릭 제스처 태스크에서 직접 실행돼야 하고(SRS-COR-51) 실패를 되돌려줘야 하므로 부트 배선 콜백이 규범이다(SRS-UI-3 v1.4). `dispatch`는 재진입 시 마이크로태스크로 미뤄져 제스처를 잃는다.
 - **포인터락을 제스처 밖에서 요청** — 브라우저가 거부. 반드시 사용자 클릭 핸들러 문맥 + `unadjustedMovement:true` 시도 → 실패 시 옵션 없이 2단 폴백(SRS-COR-51). 성공 판정은 `pointerlockchange` 이벤트 기준.
 - **reduced-motion 런타임 반영** — `comfortTouchedByUser===true`면 자동 변경 금지, 알림만(SRS-COR-24).
 - **전이 추가 시 시험 누락** — `TC-COR-01`이 6×6 전수 대조라 매트릭스만 고치면 시험이 잡아준다. 시험을 약화시키지 말고 문서·시험을 같이 갱신.

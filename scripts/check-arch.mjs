@@ -2,6 +2,7 @@
 //  * ui/ must not import scene/ or audio/ ; scene/ & audio/ must not import ui/
 //  * only core/ may call store.coreSet / dispatch handler internals
 //  * only core/inputSession.ts may touch pointer-lock / fullscreen APIs
+//  * every Action union member has at least one dispatch site (no dead actions) — TC-UI-07
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
@@ -53,7 +54,44 @@ function check(file) {
   }
 }
 
+/**
+ * Dead-action gate (TC-UI-07, SRS-UI-3 v1.4 / §4.2).
+ * A member of the `Action` union with no dispatch site is a contract that documents a path
+ * the code does not take — exactly the drift found by the 2026-09-06 adversarial review.
+ * Either wire a publisher or delete the member; do not leave a handler-only action behind.
+ */
+function checkActionPublishers() {
+  const typesFile = join(SRC, 'types.ts');
+  const types = readFileSync(typesFile, 'utf8');
+  const union = types.slice(types.indexOf('export type Action ='));
+  const declared = [...union.matchAll(/\|\s*\{\s*type:\s*'([A-Za-z]+)'/g)].map((m) => m[1]);
+  if (!declared.length) {
+    violations.push("types.ts: Action union not found (dead-action gate cannot run)");
+    return;
+  }
+  const dispatched = new Set();
+  const scan = (dir) => {
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name);
+      if (statSync(p).isDirectory()) scan(p);
+      else if (/\.(ts|tsx)$/.test(name)) {
+        const text = readFileSync(p, 'utf8');
+        for (const m of text.matchAll(/dispatch\(\s*\{\s*type:\s*'([A-Za-z]+)'/g)) {
+          dispatched.add(m[1]);
+        }
+      }
+    }
+  };
+  scan(SRC);
+  for (const a of declared) {
+    if (!dispatched.has(a)) {
+      violations.push(`types.ts: action '${a}' has no dispatch site (dead action — TC-UI-07)`);
+    }
+  }
+}
+
 walk(SRC);
+checkActionPublishers();
 if (violations.length) {
   console.error('[check-arch] FAILED');
   for (const v of violations) console.error('  -', v);

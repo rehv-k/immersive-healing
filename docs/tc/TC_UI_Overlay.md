@@ -3,13 +3,14 @@
 | 항목 | 값 |
 |---|---|
 | Document ID | TC_UI_Overlay |
-| Version / Status | v1.0 / Draft |
+| Version / Status | v1.1 / Draft |
 | Parent SRS | [SRS](../srs/SRS.md) §3.10 (SRS-UI-1~10) |
-| Test Scripts | (자동 시험 미배정 — 검사·시연 중심 컴포넌트) |
+| Test Scripts | (Vitest 미배정 — 검사·시연 중심 컴포넌트. TC-UI-07은 `scripts/check-arch.mjs` 기계 게이트) |
 | 상위 체인 | RFP R-5(게이트)·R-6(일시정지)·R-13(unsupported)·R-24(효능 주장 금지) → PRD FR-1x·FR-5x·FR-6x·FR-90 → SRS-UI → **본 TC** |
 
 > **권위 선언**: 요구·시험의 권위는 본 TC 문서다. 리포트는 특정 실행의 evidence다.
 > DOM·접근성·문구는 **검사·시연이 1차 레인**이다. 리포트 "미커버"는 레인 배치다.
+> **v1.1 (2026-09-10)**: SRS-UI-3 v1.4 개정(입장·재잠금은 액션이 아니라 부트 배선 콜백) 반영 — TC-UI-02 기대·기준 재작성(격차 주석 해소), **TC-UI-07 신설**(데드 액션 기계 게이트).
 
 ## 1. 테스트 전략
 
@@ -28,15 +29,16 @@
 | TC ID | 검증 SRS | 검증 방법 | 전제 | 절차 | 기대 결과 | Pass/Fail 기준 |
 |---|---|---|---|---|---|---|
 | **TC-UI-01** | SRS-UI-2 · FR-90 | 검사 | — | ① 게이트·크레딧·전 UI 문구 검사 | 치료·치유·효능 주장 0건('이완/휴식' 수준만), 광과민 고지 1줄 존재 | 금지 표현 0 **AND** 고지 존재 → Pass |
-| **TC-UI-02** | SRS-UI-3 | 검사 | — | ① check-arch ② gate 클릭 핸들러 검사 | ui는 액션/콜백 위임만 하고 오디오 resume·포인터락·전체화면은 core(inputSession)가 수행 | ui 내 브라우저 API 호출 0건 → Pass. ※현행 구현은 `enterRequested` 액션 대신 main 콜백 경로 — 격차 기록은 DEVLOG 2026-09-06 |
+| **TC-UI-02** | SRS-UI-3(v1.4) · SRS-COR-50·51 | 검사 | — | ① check-arch 실행 ② gate·pauseMenu 클릭 핸들러 검사 ③ 입장 시퀀스가 클릭 제스처 태스크에서 시작되는지(핸들러→콜백 사이에 액션 채널·타이머·이벤트 경유 0) 검사 | ui는 콜백 위임·액션 발행만 하고, 오디오 resume은 audio(graph)·포인터락/전체화면은 core(inputSession)가 수행. 잠금 거부 시 게이트 잔류 | `ui/` 내 브라우저 API 호출 0건 **AND** 입장·재잠금 경로에 액션 채널 경유 0건 **AND** 실패 시 게이트 잔류 분기 존재 → Pass |
 | **TC-UI-03** | SRS-UI-4 | 시연 | 실기 | ① Esc 일시정지 ② Tab 순회 ③ 닫기 | 포커스 트랩 동작, 계속 버튼 1.5s 후 활성, 닫힘 시 포커스 복원 | 3항목 전부 → Pass |
 | **TC-UI-04** | SRS-UI-6 | 검사 | — | ① 크레딧 렌더 소스 검사 | `credits.json` 단일 소스 + 오픈소스 고지(three.js MIT 등) | 하드코딩 크레딧 0건 **AND** 고지 존재 → Pass |
 | **TC-UI-05** | SRS-UI-1 | 검사·시연 | 실기 | ① 루트 `pointer-events:none`·`inert` 검사 ② hall 상태 오버레이 확인 | 상영관에서 DOM 오버레이 전부 비표시(일시정지·최소 프롬프트 제외) | 검사 일치 **AND** 실기 확인 → Pass |
 | **TC-UI-06** | SRS-UI-7 | 시연 | WebGL2 불가 환경(강제 플래그) | ① 부트 | unsupported 화면: 대표 이미지+데스크톱 안내+링크 복사 | 3요소 표시 → Pass |
+| **TC-UI-07** (v1.1 신설) | SRS-UI-3(v1.4) · SRS §4.2 | 검사(기계 게이트) | `npm run check` | ① `check-arch`가 `types.ts`의 `Action` 유니언 전 멤버를 수집 ② `src/` 전역에서 `dispatch({ type: '…' })` 발행처를 수집 ③ 발행처 0인 멤버를 위반으로 보고 ④ **음성시험**: 임시 더미 액션 추가 시 exit 1 확인 | 액션 목록(§4.2)과 코드 유니언이 1:1 — 핸들러만 있고 발행처 없는 "데드 액션" 0건 | 위반 0 **AND** 음성시험에서 exit 1 → Pass |
 
 ## 4. 테스트 실행 순서
 
-검사(TC-UI-01·02·04·05)는 빌드·리뷰 시점. 시연(TC-UI-03·05·06)은 릴리스 전 체크리스트.
+검사(TC-UI-01·02·04·05)는 빌드·리뷰 시점. **TC-UI-07은 `npm run check`·`npm run build`에서 자동 수행**(빌드 게이트). 시연(TC-UI-03·05·06)은 릴리스 전 체크리스트.
 
 ## 5. Pass/Fail 기준
 
@@ -52,5 +54,6 @@
 | SRS-UI-6 | TC-UI-04 | 검사 |
 | SRS-UI-1 | TC-UI-05 | 검사 + 시연 |
 | SRS-UI-7 | TC-UI-06 | 수동 시연 |
+| SRS-UI-3(v1.4) · SRS §4.2 | TC-UI-07 | `scripts/check-arch.mjs` (빌드 게이트) |
 
-> 번호 규율: 다음 UI TC 번호는 **7번부터**. 재배치·재사용 금지.
+> 번호 규율: 다음 UI TC 번호는 **8번부터**. 재배치·재사용 금지.

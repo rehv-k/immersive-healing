@@ -6,6 +6,7 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 
@@ -26,13 +27,25 @@ const SUITES = [
 
 const TC_ID_RE = /TC-([A-Z]+)-(\d+)/g;
 
+// vitest 진입점은 해석으로 찾는다 — git worktree에서는 node_modules가 상위 체크아웃에 있어
+// ROOT 고정 경로가 빗나간다(2026-09-10: 리포트 게이트가 조용히 실패하던 원인).
+function resolveVitestEntry() {
+  const require = createRequire(join(ROOT, 'package.json'));
+  try {
+    return require.resolve('vitest/vitest.mjs');
+  } catch {
+    return join(dirname(require.resolve('vitest/package.json')), 'vitest.mjs');
+  }
+}
+
 function runVitest(junitPath) {
   const r = spawnSync(
     process.execPath,
-    [join(ROOT, 'node_modules', 'vitest', 'vitest.mjs'), 'run', '--reporter=junit', `--outputFile=${junitPath}`],
+    [resolveVitestEntry(), 'run', '--reporter=junit', `--outputFile=${junitPath}`],
     { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' },
   );
   if (r.error) throw r.error;
+  if (r.status !== 0 && r.stderr) console.error(r.stderr.trim());
   return r.status ?? 1;
 }
 

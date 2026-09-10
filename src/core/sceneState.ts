@@ -139,17 +139,13 @@ class SceneStateMachine {
 
   private handle(a: Action): void {
     const state = store.get();
+    // Entry and pause-resume never arrive here: both need the click's own gesture task and a
+    // pass/fail answer, so they run on the boot-wired callbacks (SRS-UI-3 v1.4). Pause entry is
+    // observed by inputSession (SRS-COR-32) and lands on enterPaused()/exitPaused() directly.
     switch (a.type) {
-      case 'enterRequested':
-        // inputSession performs resume+lock; on success it calls back into enterGranted().
-        // Handled in main via wiring; here we only validate state.
-        break;
       case 'skipCorridor':
         // External requests during a transition are dropped, not queued (SRS-COR-30).
         if (state.scene.state === 'corridor' && !state.scene.transitioning) this.transition('hall');
-        break;
-      case 'pauseResume':
-        // resume path: inputSession re-requests pointer lock; exitPaused on lock success.
         break;
       case 'exitRequested':
         if (

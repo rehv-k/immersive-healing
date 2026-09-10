@@ -45,7 +45,7 @@ src/
   data/credits.json     # 크레딧 단일 대장(CC-BY·오픈소스 고지 원천)
   styles.css            # DOM 오버레이 스타일(:focus-visible·inert 규칙 포함)
 scripts/
-  check-arch.mjs        # ★의존 규칙·API 전유 기계 강제(빌드 게이트)
+  check-arch.mjs        # ★의존 규칙·API 전유·데드 액션 기계 강제(빌드 게이트, TC-UI-07)
   check-size.mjs        # 번들 gzip ≤300KB 게이트
   check-licenses.mjs    # SPDX 허용목록 게이트
   generate-report.mjs   # ★TC 커버리지 리포트(vitest→JUnit→docs/tc 대조, orphan 게이트)
@@ -82,7 +82,7 @@ docs/report/            # 근거·evidence — ci-report.md(자동 생성), M0 �
 | `openSettings`·`closeSettings`·`openCredits`·`closeCredits` | gate/pauseMenu/패널 | 오버레이 개폐 |
 | `noticeRetried {id}`·`noticeDismissed {id}` | hud | 오류 알림 처리(`sys.notices` 채널) |
 
-**콜백 경로 (액션 아님 — 구현 격차 주의)**: 입장은 gate `onEnter(direct)` 콜백 → main `doEnter`(graph.resume → inputSession.requestLock → 전이), 일시정지는 Esc → 브라우저 포인터락 해제 → inputSession의 `pointerlockchange` 관측 → core 내부 전이, 복귀는 pauseMenu `onContinue` 콜백. `types.ts`의 `enterRequested`·`pauseResume` 액션은 핸들러만 있고 **발행처 0곳**(SRS-UI-3 규범과의 격차 — DEVLOG 2026-09-06 기록). scene/audio → core 관측값은 `sys.*` 네임스페이스만.
+**콜백 경로 (액션 아님 — SRS-UI-3 v1.4 규범)**: 입장은 gate `onEnter(direct)` 콜백 → main `doEnter`(graph.resume → inputSession.requestLock → 전이), 일시정지 진입은 Esc → 브라우저 포인터락 해제 → inputSession의 `pointerlockchange` 관측 → core 내부 전이, 복귀는 pauseMenu `onContinue` 콜백(재잠금 요청). **액션이 아닌 이유는 규범**이다 — 액션 채널은 반환값이 없어 "잠금 거부 → 게이트 잔류"를 표현할 수 없고, `store.dispatch`가 재진입 시 마이크로태스크로 미뤄 SRS-COR-51의 제스처 문맥 요구를 깰 수 있다. **콜백 예외는 이 둘(제스처 요구 동작·쿨다운 조회)에 한정** — 나머지 ui→core 전달은 전부 액션. `enterRequested`·`pauseResume` 데드 액션은 2026-09-10 제거했고, 발행처 없는 액션은 `check-arch`가 빌드를 깬다(TC-UI-07). scene/audio → core 관측값은 `sys.*` 네임스페이스만.
 
 ## 6. 개발 명령어
 

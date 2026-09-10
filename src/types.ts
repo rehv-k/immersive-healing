@@ -85,11 +85,17 @@ export interface AppState {
   sys: SysSlice;
 }
 
-/** Actions ui/ may dispatch (SRS §4.2). */
+/**
+ * Actions ui/ may dispatch (SRS §4.2).
+ *
+ * Every member MUST have at least one dispatch site — check-arch fails the build on a
+ * publisher-less member (TC-UI-07). Entry and pause-resume are deliberately NOT actions:
+ * they must run inside the click's own gesture task (SRS-COR-51) and must report failure
+ * back to the caller, neither of which the void, re-entrancy-deferred dispatch channel can
+ * do. They travel on the boot-wired callbacks instead (SRS-UI-3 v1.4).
+ */
 export type Action =
-  | { type: 'enterRequested'; direct?: boolean } // direct = revisit straight-to-hall
   | { type: 'skipCorridor' }
-  | { type: 'pauseResume' }
   | { type: 'exitRequested' }
   | { type: 'reenterRequested' } // from credits back to gate
   | { type: 'settingsChanged'; patch: Partial<Settings> }

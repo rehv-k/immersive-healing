@@ -2,6 +2,20 @@
 
 > 규칙: ① 문서와 충돌 시 코드 우선 → 문서 역반영 항목으로 기록·보고 ② 필수 아님 추가 기능은 기록만 ③ 직접 확인 불가 판정 3회 → 사용자 확인 항목으로 이관.
 
+## 2026-09-10 — 적대 검수 구현 격차 처분: SRS-UI-3 개정(②안)
+
+- **격차**(2026-09-06 적대 검수에서 발견): `types.ts`의 `enterRequested`·`pauseResume`는 sceneState에 핸들러만 있고 발행처 0곳. SRS-UI-3의 "액션 발행" 규범과 어긋남.
+- **처분: ②안 — 문서를 코드에 맞춰 개정하고 데드 액션 제거.** ①안(콜백→액션 정합)을 기각한 근거 셋:
+  1. **제스처 문맥 충돌(결정적)** — `store.dispatch`는 알림 사이클 재진입 시 액션을 마이크로태스크로 미룬다(`store.ts` `if (this.notifying) enqueue`). 포인터락·`AudioContext.resume()`을 그 경로에 태우면 **SRS-COR-51의 "요청은 반드시 사용자 제스처 핸들러 문맥에서"를 확률적으로 깬다.** 즉 ①안은 규범 하나를 지키려다 더 강한 규범(브라우저 동작에 근거한)을 깨는 거래였다.
+  2. **계층 규칙과 충돌** — 입장 시퀀스는 audio(resume) → core(락·전체화면) → DOM(페이드) → scene(teleport) → core(전이)에 걸친다. `core/`는 `scene/`·`audio/`를 import할 수 없으므로(§3), core가 이걸 소유하려면 main의 배선을 core 안에 콜백 주입으로 재구성해야 한다 — 간접층만 한 겹 늘고 동작은 동일.
+  3. **실패를 표현할 수 없음** — `dispatch`는 void. "잠금 거부 → 게이트 잔류"(§6.1)와 연타 가드(`enterBusy`)가 갈 곳이 없다. pauseMenu는 `msUntilResumeAllowed()` 조회 콜백이 어차피 필요해 콜백 표면이 사라지지도 않는다.
+- **개정 내용(SRS v1.4)**: SRS-UI-3 본문 취소선 + 개정 문구(전달 수단=부트 배선 콜백, **소유권은 불변** — ui는 여전히 브라우저 API 0회 호출). 부수 정정: SRS-COR-50 말미 문장, §4.2 액션 목록 2종 폐기 표기. 신설 요구 ID 없음, 관측 가능한 동작 변화 없음.
+- **콜백 예외의 범위를 규범으로 좁힘**: 예외는 ①제스처 태스크를 요구하는 동작 ②쿨다운 잔여시간 같은 조회 — **둘뿐**. 나머지 ui→core 전달은 전부 액션. 이 문장이 없으면 "콜백 허용" 개정이 액션 규율 전체를 무르게 하는 구멍이 된다.
+- **재발 방지(신설 TC-UI-07)**: `check-arch`에 **데드 액션 게이트** 추가 — `Action` 유니언 전 멤버 대 `dispatch({type:'…'})` 발행처를 대조해 발행처 0인 멤버에서 빌드 실패. 음성시험 수행(더미 액션 주입 → exit 1, 정상 상태 → OK). 이번 격차는 사람 검수가 3주 뒤에야 잡았지만, 이후로는 커밋 시점에 잡힌다.
+- **역정합**: SRS v1.4(UI-3·COR-50·§4.2) · TC_UI_Overlay v1.1(TC-UI-02 재작성·TC-UI-07 신설·다음 번호 8) · CLAUDE.md §2·§5 · core-state 스킬 · `types.ts`·`sceneState.ts`(데드 코드 제거) · gate/pauseMenu/main 주석에 SRS 포인터.
+- **부수 발견·수정(도구)**: `generate-report.mjs`가 vitest 진입점을 `<ROOT>/node_modules/vitest/vitest.mjs` 고정 경로로 잡아, **git worktree에서 리포트 게이트가 조용히 실패**하고 있었다(node_modules는 상위 체크아웃에 있음 → "JUnit XML이 생성되지 않았다"). `createRequire` 해석으로 교체 + vitest stderr 전달 추가. 검증 게이트가 환경에 따라 무력화되는 건 게이트가 없는 것보다 나쁘다.
+- **남은 것 없음** — 2026-09-06 "처분 결정 필요" 항목은 이로써 종결.
+
 ## 2026-08-22 — 개발 착수
 
 ### 환경 확인
@@ -53,7 +67,7 @@
 ### 적대 검수 (2026-09-06 — 이식 직후 전수 재검)
 
 - **TC 문서 상위 체인 인용 오류 6건 정정**: 초안이 RFP R-번호를 추정 인용(예: 오디오에 R-9 "VR 불필요", 렌디션에 R-8 "링크 입장") → RFP §3 실정의와 전수 대조해 재작성(정위 오디오=R-3, 렌디션=R-19~21 등).
-- **[구현 격차 발견 — 문서 역반영 후보]** `types.ts`의 `enterRequested`·`pauseResume` 액션은 sceneState에 핸들러만 있고 **발행처 0곳**. 실제 경로: 입장 = gate `onEnter` 콜백 → main `doEnter`, 일시정지 = Esc → `pointerlockchange` 관측(inputSession). SRS-UI-3의 "enterRequested 액션 발행" 규범과 어긋남 — 브라우저 API 소유권(core 전유)은 준수 중이므로 아키텍처 위반은 아님. **처분 결정 필요**: ① 코드를 규범대로(콜백→액션) 정합 ② SRS-UI-3을 콜백 허용으로 개정 + 데드 액션 제거. CLAUDE.md §5와 TC-UI-02에 격차 명시 완료.
+- **[구현 격차 발견 — 문서 역반영 후보]** `types.ts`의 `enterRequested`·`pauseResume` 액션은 sceneState에 핸들러만 있고 **발행처 0곳**. 실제 경로: 입장 = gate `onEnter` 콜백 → main `doEnter`, 일시정지 = Esc → `pointerlockchange` 관측(inputSession). SRS-UI-3의 "enterRequested 액션 발행" 규범과 어긋남 — 브라우저 API 소유권(core 전유)은 준수 중이므로 아키텍처 위반은 아님. ~~**처분 결정 필요**: ① 코드를 규범대로(콜백→액션) 정합 ② SRS-UI-3을 콜백 허용으로 개정 + 데드 액션 제거.~~ **[종결 2026-09-10 — ②안 채택, SRS v1.4·TC-UI-07. 근거는 이 문서 2026-09-10 항목]**
 - **리포트 장치 음성시험 추가 수행**: 실패 테스트 → ③섹션 ❌ + 종료코드 전파, 복수 TC-ID 단일 제목 집계, orphan → exit 1 (3건 모두 정상).
 - CLAUDE.md §5 표를 실코드 대조로 재작성(발행처 정정), §2 트리에 `data/`·`styles.css` 보강.
 

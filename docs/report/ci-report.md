@@ -1,6 +1,6 @@
 # TC 커버리지 리포트 (자동 생성 — 손 편집 금지)
 
-> 생성: `node scripts/generate-report.mjs` · 2026-09-07T12:19:54.998Z
+> 생성: `node scripts/generate-report.mjs` · 2026-09-10T10:39:34.786Z
 > 이 리포트는 **특정 실행의 evidence**다 — 요구·시험의 권위는 `docs/tc/` TC 문서다.
 > 미커버에는 다른 레인(검사·시연·분석)이 포함된다 — 각 TC 문서 §3의 검증 방법 열 참조.
 
@@ -8,7 +8,7 @@
 
 - 테스트 파일 7 · 테스트 35 (통과 35 / 실패 0 / 건너뜀 0)
 - TC 문서 자동시험 연결 5 / 6
-- **orphan 0건** (게이트: 0이어야 함) · 미커버 31건
+- **orphan 0건** (게이트: 0이어야 함) · 미커버 32건
 
 ## ② TC 문서 커버리지
 
@@ -68,7 +68,7 @@
 | COR | 16 | 13 | TC-COR-13 · TC-COR-14 · TC-COR-15 |
 | QLT | 9 | 6 | TC-QLT-07 · TC-QLT-08 · TC-QLT-09 |
 | SCN | 14 | 7 | TC-SCN-01 · TC-SCN-02 · TC-SCN-03 · TC-SCN-04 · TC-SCN-05 · TC-SCN-06 · TC-SCN-07 |
-| UI | 6 | 0 | TC-UI-01 · TC-UI-02 · TC-UI-03 · TC-UI-04 · TC-UI-05 · TC-UI-06 |
+| UI | 7 | 0 | TC-UI-01 · TC-UI-02 · TC-UI-03 · TC-UI-04 · TC-UI-05 · TC-UI-06 · TC-UI-07 |
 | VID | 10 | 6 | TC-VID-07 · TC-VID-08 · TC-VID-09 · TC-VID-10 |
 
 ## ⑤ 파일별 상세

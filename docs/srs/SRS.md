@@ -1,8 +1,9 @@
 # SRS — Immersive Healing (가칭) · 1호 콘텐츠 「일몰」 MVP
 
-> **Software Requirements Specification** · v1.2 (2026-09-06) · 실용형 구현 명세
+> **Software Requirements Specification** · v1.4 (2026-09-10) · 실용형 구현 명세
 > **v1.2 개정**: SDLC 방법론 이식 — TC ID 가족(`TC-<모듈>-NN`)·시험 문서(`docs/tc/`)·자동 대조 리포트 신설(§1.2·§9.5). 기존 요구 ID·본문 무변경(append-only).
 > **v1.3 개정 (2026-09-06 — PRD v1.2 FR-38·39·54 전개, v5 몰입 홀)**: SRS-SCN-25(타원 홀·연속 스크린), SRS-SCN-26(해석적 반사 바닥·천장), SRS-VID-8(하늘 시간 순환), SRS-AUD-9(위상 연동 믹스), SRS-COR-25(breathGuide 설정) 신설. 기존 요구 무변경. 근거: [조사 K](../prd/research/K-immersive-hall-reference.md), 설계 결정 [SDD D-10~14](../SDD.md).
+> **v1.4 개정 (2026-09-10 — [적대 검수](../dev/DEVLOG.md) 구현 격차 처분)**: **SRS-UI-3 개정** — 입장·일시정지 복귀의 전달 수단을 액션에서 **부트 배선 콜백**으로 정정(SRS-COR-51의 "사용자 제스처 핸들러 문맥" 요구와 액션 채널의 마이크로태스크 지연·무반환이 충돌). 부수 정정: SRS-COR-50 말미 문장, §4.2 액션 목록에서 `enterRequested`·`pauseResume` 폐기. 신설 요구·ID 없음, 관측 가능한 동작 변화 없음(문서를 코드에 맞춘 역반영). 시험: TC-UI-02 개정 + **TC-UI-07 신설**(데드 액션 기계 게이트).
 > 문서 계보: [GOAL](../GOAL.md) → [MRD](../mrd/MRD.md) → [RFP](../rfp/RFP.md) → [PRD](../prd/PRD.md) → **SRS(본 문서)**
 > 기술 근거: 조사 [E](../rfp/research/E-browser-ux-constraints.md)·[F](../rfp/research/F-motion-sickness-accessibility.md)·[G](../rfp/research/G-performance-targets-analytics.md)·[H](../prd/research/H-rendering-stack.md)·[I](../prd/research/I-video-delivery-hosting.md)·[J](../prd/research/J-audio-app-architecture.md)
 > 코드 조각은 규범적 의사코드다 — 동작·계약이 규범이며, 문장 그대로의 구현을 강제하지 않는다.
@@ -171,7 +172,7 @@ interface SceneSlice {
 
 ### 3.4 core/inputSession (SRS-COR-5x, v1.1 신설 — 감사 B1 해소)
 
-- **SRS-COR-50 [필수]** Pointer Lock·Fullscreen·visibility의 **모든 브라우저 API 호출과 이벤트 수신은 이 모듈 전유**: `requestPointerLock`/`exitPointerLock`/`pointerlockchange`/`pointerlockerror`/`requestFullscreen`/`fullscreenchange`/`visibilitychange`. ui는 `enterRequested`·`pauseResume` 액션만 발행하고, scene/player는 `sys.pointerLocked`를 read-only 소비한다.
+- **SRS-COR-50 [필수]** Pointer Lock·Fullscreen·visibility의 **모든 브라우저 API 호출과 이벤트 수신은 이 모듈 전유**: `requestPointerLock`/`exitPointerLock`/`pointerlockchange`/`pointerlockerror`/`requestFullscreen`/`fullscreenchange`/`visibilitychange`. ~~ui는 `enterRequested`·`pauseResume` 액션만 발행하고,~~ **[v1.4 개정]** ui는 이 API를 직접 호출하지 않으며, 입장·재잠금 요청은 부트가 주입한 콜백으로 이 모듈에 위임한다(SRS-UI-3). scene/player는 `sys.pointerLocked`를 read-only 소비한다.
 - **SRS-COR-51 [필수]** 잠금 요청 계약 (감사 S4): `requestPointerLock({ unadjustedMovement: true })` 시도 → reject/미지원 시 옵션 없이 **2단 폴백**. 성공 판정은 `pointerlockchange` 이벤트 기준(Promise 지원 여부 브라우저 편차 흡수). 요청은 반드시 사용자 제스처 핸들러 문맥에서.
 - **SRS-COR-52 [필수]** 전체화면은 게이트의 별도 토글(기본 꺼짐)로, 같은 클릭 제스처 안에서 **포인터락 → 전체화면 순서**로 호출. `fullscreenerror`는 무해 처리(경험 성립에 비필수). Keyboard Lock API는 **미도입**(v1.1 명시 — Firefox 미지원, RFP §4.1-5의 처분 기록).
 
@@ -286,7 +287,8 @@ pw = 스크린의 예상 화면 픽셀 폭
 
 - **SRS-UI-1 [필수]** DOM 오버레이. 루트 `pointer-events: none` + **비활성 패널에 `inert` 속성**(v1.1 — Tab 포커스 유출 방지, 감사 S10). WebGL 내 텍스트 금지. **상영관 상태에서 DOM 오버레이는 전부 비표시**(일시정지·최소 프롬프트 제외 — v1.1, PRD FR-36 이관).
 - **SRS-UI-2 [필수]** 게이트: 제목·소개 / 헤드폰 안내 / **광과민성·멀미 사전 고지 1줄** / "입장하기"(§3.5 조건 충족 시 활성) / 편안한 관람 2택 / 설정·크레딧 / 재방문 "바로 상영관"(§5.4 hall-lq 조건) / 3초 초과 시 실측 % 진행률. **문구는 PRD FR-90 표현 제약 준수**(치유·효능 주장 금지 — v1.1).
-- **SRS-UI-3 [필수]** "입장하기" 클릭: `enterRequested` 액션 발행 → **core(inputSession)가** resume·포인터락·(토글 시) 전체화면 처리(§3.4 — v1.1 소유권 정리).
+- **SRS-UI-3 [필수]** ~~"입장하기" 클릭: `enterRequested` 액션 발행 → **core(inputSession)가** resume·포인터락·(토글 시) 전체화면 처리(§3.4 — v1.1 소유권 정리).~~
+  **[v1.4 개정 — 전달 수단 정정, 소유권은 불변]** "입장하기" 클릭은 부트가 주입한 **입장 시퀀스 콜백**을 그 클릭의 **같은 제스처 태스크에서** 호출한다. ui는 오디오 resume·포인터락·전체화면 API를 **직접 호출하지 않으며**(§3.4 SRS-COR-50·SRS-AUD-7이 소유), 시퀀스의 실패는 게이트 잔류로 되돌아온다(§6.1). 액션 채널(§4.2)을 쓰지 않는 것이 규범이다 — 근거 둘: ① 액션은 반환값이 없어 "잠금 거부 → 입장 취소"를 표현할 수 없다 ② 액션 전달은 재진입 시 마이크로태스크로 미뤄질 수 있어 **SRS-COR-51의 제스처 문맥 요구를 깬다**. 같은 규율이 일시정지에도 적용된다: 진입은 액션이 아니라 inputSession의 잠금 해제 관측(SRS-COR-32), 복귀("계속")는 같은 제스처 태스크의 재잠금 콜백이다. **콜백 예외는 이 둘(제스처 요구 동작·쿨다운 잔여시간 같은 조회)에 한정**되고, 그 밖의 ui→core 전달은 전부 액션이어야 한다(§4.2). 검증: 검사(TC-UI-02) + 기계 게이트(TC-UI-07).
 - **SRS-UI-4 [필수]** 일시정지 메뉴: 반투명+씬 흐림(스크린은 정지 프레임 — 의도된 동작, v1.1 명시), 계속(1.5s 후 활성)/설정/크레딧/나가기. **포커스 트랩 + 닫힘 시 포커스 복원**(v1.1). `:focus-visible`·대비 AA.
 - **SRS-UI-5 [필수]** 설정 패널: §3.6 항목. 즉시 반영 + 디바운스 저장. 게이트·일시정지 공용.
 - **SRS-UI-6 [필수]** 크레딧: `credits.json` 단일 소스 렌더(CC-BY 형식 준수) + **오픈소스 고지(three.js MIT, postprocessing Zlib 등 — `kind:'tool'` 활용)** + 분석 고지(도입 시). 문구 FR-90 준수.
@@ -345,7 +347,8 @@ interface AppState {
 
 ### 4.2 액션 목록 (v1.1 확장)
 
-`ui/` → core: `enterRequested`, `skipCorridor`, `pauseResume`, `exitRequested`, `settingsChanged(partial)`, `muteToggled`, `openSettings/closeSettings`, `openCredits/closeCredits`, **`noticeRetried(id)`, `noticeDismissed(id)`** (v1.1).
+`ui/` → core: ~~`enterRequested`~~, `skipCorridor`, ~~`pauseResume`~~, `exitRequested`, `settingsChanged(partial)`, `muteToggled`, `openSettings/closeSettings`, `openCredits/closeCredits`, **`noticeRetried(id)`, `noticeDismissed(id)`** (v1.1).
+**[v1.4 개정]** `enterRequested`·`pauseResume`는 **폐기 — SRS-UI-3(v1.4)의 입장 시퀀스·재잠금 콜백으로 대체**. 액션 목록은 코드의 `Action` 유니언과 1:1이어야 하며, **발행처 없는 액션은 정적 검사가 빌드를 깬다**(TC-UI-07) — 핸들러만 있는 액션을 남겨 목록을 부풀리지 않는다.
 구독자 콜백 내 무거운 작업 금지 — `queueMicrotask` 예약(§3.1), 오디오 지연 작업은 rAF 금지.
 
 ---

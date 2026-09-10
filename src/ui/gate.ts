@@ -4,6 +4,12 @@
 import { store } from '../core/store';
 import { el, setPanelVisible } from './dom';
 
+/**
+ * Entry travels on a callback, not on the action channel (SRS-UI-3 v1.4): `onEnter` must run
+ * inside this click's own gesture task so audio resume and pointer lock are granted
+ * (SRS-COR-51), and it must be able to fail back onto the gate (§6.1). ui still calls no
+ * browser API itself — core/inputSession and audio/graph own those.
+ */
 export interface GateCallbacks {
   onEnter(direct: boolean): void;
   onFullscreenToggled(v: boolean): void;

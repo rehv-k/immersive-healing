@@ -4,6 +4,7 @@
 import { store } from '../core/store';
 import { el, setPanelVisible, trapFocus } from './dom';
 
+/** Resume is a re-lock request in the click's gesture task, not an action (SRS-UI-3 v1.4). */
 export interface PauseCallbacks {
   onContinue(): void;
   msUntilResumeAllowed(): number;

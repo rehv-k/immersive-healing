@@ -164,6 +164,8 @@ function boot(): void {
     onFullscreenToggled: (v) => inputSession.setFullscreenWanted(v),
   });
 
+  // The entry sequence spans audio + core + scene + the DOM fade, so boot owns it and the
+  // gate calls straight into it (SRS-UI-3 v1.4) — core/ may import neither scene/ nor audio/.
   async function doEnter(direct: boolean, s: ReturnType<typeof store.get>): Promise<void> {
     const audioOk = await graph.resume();
     if (!audioOk) {
