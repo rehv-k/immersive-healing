@@ -9,3 +9,9 @@ public/media/
 
 # Measurement logs from the debug overlay
 docs/dev/measurements/
+
+# Agent worktrees + machine-local agent settings (never committed)
+.claude/worktrees/
+.claude/settings.local.json
+.env
+.env.*

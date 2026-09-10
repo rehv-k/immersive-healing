@@ -52,5 +52,5 @@ argument-hint: "대상 (예: srs, tc, devlog)"
 
 ## 관련 문서(SDLC)
 
-- 방법론 원문: `C:/Users/ksj/Desktop/docs/프로젝트_운영_방법론_이식_가이드라인.md`
+- 방법론 원문: `프로젝트_운영_방법론_이식_가이드라인.md` — **저장소 밖 로컬 문서**(경로는 각자 환경에 따라 다름).
 - 동기화 규칙·커밋 규약: `CLAUDE.md` §9. 시험 장치: tc-verification 스킬.
