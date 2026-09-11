@@ -6,6 +6,7 @@
 
 import { DoubleSide, ShaderMaterial, type DataTexture } from 'three';
 import { SKY_FUNCTIONS, SKY_UNIFORM_DECL, type SkyUniforms } from './skyShader';
+import { MEDIA_FUNCTIONS, MEDIA_UNIFORM_DECL, type MediaUniforms } from './panoMedia';
 
 const VERT = /* glsl */ `
   varying vec3 vWorldPos;
@@ -18,6 +19,7 @@ const VERT = /* glsl */ `
 
 const FRAG = /* glsl */ `
   ${SKY_UNIFORM_DECL}
+  ${MEDIA_UNIFORM_DECL}
   uniform vec2 uCenter;
   uniform vec2 uAxes;
   uniform float uPlaneY;
@@ -36,6 +38,7 @@ const FRAG = /* glsl */ `
   varying vec3 vWorldPos;
 
   ${SKY_FUNCTIONS}
+  ${MEDIA_FUNCTIONS}
 
   // 16-bit LUT: clockwise arc (normalised by perimeter) indexed by u = (start−θ)/2π.
   float lutArc(float u01) {
@@ -62,15 +65,28 @@ const FRAG = /* glsl */ `
     float t = (-B + sqrt(disc)) / (2.0 * A);
     if (t < 0.0) return vec3(0.0);
     vec3 H = P + R * t;
-    if (H.y < uBandBottom || H.y > uBandTop) return vec3(0.0);
     vec2 hp = (H.xz - uCenter) / uAxes;
     float theta = atan(hp.y, hp.x);
     float u = mod(uPanoStart - theta, 6.28318530718) / 6.28318530718;
     float arc = lutArc(u);
     if (arc > uPanoLen) return vec3(0.02, 0.015, 0.01); // entrance gap — dark corridor
     float px = arc / uBandH;
-    float py = (H.y - uBandBottom) / uBandH;
-    return panorama(px, py, uDetail);
+    // Rays that leave the screen above its top edge used to return pure BLACK, which drew a
+    // large dark arc on the floor right around the viewer (reported 2026-09-11: "큰 반원").
+    // Instead the panorama is CLAMPED at the band edges and attenuated smoothly, so the
+    // near field reads as the sky continuing overhead on a still-water floor.
+    float pyRaw = (H.y - uBandBottom) / uBandH;
+    float over = max(0.0, pyRaw - 1.0);   // above the screen — zenith, fading with distance
+    float under = max(0.0, -pyRaw);       // below the screen — dark sill
+    vec3 c = panorama(px, clamp(pyRaw, 0.0, 1.0), uDetail);
+    if (uMediaMix > 0.001) {
+      // Same arc + the band-clamped height the procedural branch uses, so a media wall and
+      // its reflection stay locked together (SRS-SCN-26).
+      c = mix(c, panoMedia(arc, vec3(H.x, clamp(H.y, uBandBottom, uBandTop), H.z)), uMediaMix);
+    }
+    c *= exp(-over * 0.8);
+    c = mix(c, vec3(0.02, 0.017, 0.014), clamp(under * 4.0, 0.0, 1.0));
+    return c;
   }
 
   void main() {
@@ -107,6 +123,7 @@ const FRAG = /* glsl */ `
 
 export interface ReflectiveOptions {
   sky: SkyUniforms;
+  media: MediaUniforms;
   arcLut: DataTexture;
   center: [number, number];
   axes: [number, number];
@@ -124,6 +141,7 @@ export function createReflectiveMaterial(o: ReflectiveOptions): ShaderMaterial {
   return new ShaderMaterial({
     uniforms: {
       ...o.sky, // shared IUniform objects — one update feeds every sky material
+      ...o.media, // ditto for the 360 media set (wall + reflection must agree)
       uCenter: { value: o.center },
       uAxes: { value: o.axes },
       uPlaneY: { value: o.planeY },

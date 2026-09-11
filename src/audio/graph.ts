@@ -7,6 +7,12 @@ import { store } from '../core/store';
 import { fadeTo } from './scheduler';
 
 export const PAUSE_DUCK = 0.35; // -9 dB equivalent (SRS-AUD-5, user decision)
+/**
+ * Output calibration (사용자 결정 2026-09-11: "사운드가 너무 커 — 1/10 정도로").
+ * A single trim on the user-volume bus so EVERY source (ambience + positional + ui) drops
+ * together; the settings slider keeps its full 0..1 travel, just over a quieter range.
+ */
+export const OUTPUT_TRIM = 0.1;
 const DUCK_SECONDS = 1.0;
 const MUTE_SECONDS = 0.15;
 
@@ -45,7 +51,7 @@ export class AudioGraph {
     this.ambienceBus.gain.value = 0; // faded in on corridor enter
     this.spatialBus.gain.value = 1;
     this.uiBus.gain.value = 1;
-    this.userVolumeBus.gain.value = 0.8;
+    this.userVolumeBus.gain.value = 0.8 * OUTPUT_TRIM;
     this.duckBus.gain.value = 1;
     this.muteBus.gain.value = 1;
 
@@ -80,7 +86,7 @@ export class AudioGraph {
 
   // Each volume source ramps ONLY its own bus (SRS-AUD-1 — no combination conflicts).
   setUserVolume(v: number): void {
-    fadeTo(this.ctx, this.userVolumeBus, Math.min(1, Math.max(0, v)), 0.05);
+    fadeTo(this.ctx, this.userVolumeBus, Math.min(1, Math.max(0, v)) * OUTPUT_TRIM, 0.05);
   }
   setDucked(ducked: boolean): void {
     fadeTo(this.ctx, this.duckBus, ducked ? PAUSE_DUCK : 1, DUCK_SECONDS);

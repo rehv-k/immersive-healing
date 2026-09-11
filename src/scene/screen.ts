@@ -3,7 +3,9 @@
 // clouds and sea are one continuous image around the ellipse. The sky itself comes from
 // the shared uniforms fed by skyCycle (SRS-VID-8) — the floor/ceiling reflections sample
 // the same uniforms, so wall and reflection can never disagree.
-// Video mode (?video): the front ribbon plays the file; the rest stays procedural.
+// Video mode (?video) and GIF mode (?gif, SRS-VID-9): the front ribbon plays the media;
+// the rest of the wall stays procedural. Either way the media is COVER-fitted to the
+// ribbon (uUvScale/uUvOffset) so a 16:9 source is not stretched across a 24m x 8m band.
 
 import {
   LinearFilter,
@@ -11,6 +13,8 @@ import {
   NoColorSpace,
   PointLight,
   ShaderMaterial,
+  SRGBColorSpace,
+  Texture,
   VideoTexture,
 } from 'three';
 import type { Rendition } from '../types';
@@ -18,6 +22,14 @@ import type { ScreenSurface } from './world';
 import { store } from '../core/store';
 import { stepDown } from './renditionSelect';
 import { SKY_FUNCTIONS, SKY_UNIFORM_DECL, type SkyUniforms } from './skyShader';
+import {
+  MEDIA_FUNCTIONS,
+  MEDIA_UNIFORM_DECL,
+  rampMediaMix,
+  setMediaTexture,
+  type MediaUniforms,
+} from './panoMedia';
+import { GifSource } from './gifTexture';
 
 const SWAP_TRIGGER_S = 0.5;
 const SWAP_RAMP_S = 0.25;
@@ -41,16 +53,20 @@ const VERT = /* glsl */ `
 
 const FRAG = /* glsl */ `
   ${SKY_UNIFORM_DECL}
+  ${MEDIA_UNIFORM_DECL}
   uniform sampler2D texA;
   uniform sampler2D texB;
   uniform float uMix;
   uniform float uProcedural;
   uniform float uBandBottom;
+  uniform vec2 uUvScale;   // cover fit: media aspect -> ribbon aspect (no stretching)
+  uniform vec2 uUvOffset;
   varying vec2 vUv;
   varying vec3 vWorldPos;
   varying float vArc;
 
   ${SKY_FUNCTIONS}
+  ${MEDIA_FUNCTIONS}
 
   vec3 srgbToLinear(vec3 c) { return pow(c, vec3(2.2)); }
 
@@ -60,9 +76,13 @@ const FRAG = /* glsl */ `
       float px = vArc / uBandH;
       float py = clamp((vWorldPos.y - uBandBottom) / uBandH, 0.0, 1.0);
       color = panorama(px, py, 1.0);
+      // Wrap mode (SRS-VID-10): the 360 media covers the WHOLE wall, so it blends over the
+      // procedural sky here rather than replacing one ribbon's texture.
+      if (uMediaMix > 0.001) color = mix(color, panoMediaWall(vArc, vWorldPos), uMediaMix);
     } else {
-      vec3 a = srgbToLinear(texture2D(texA, vUv).rgb);
-      vec3 b = srgbToLinear(texture2D(texB, vUv).rgb);
+      vec2 uvFit = vUv * uUvScale + uUvOffset;
+      vec3 a = srgbToLinear(texture2D(texA, uvFit).rgb);
+      vec3 b = srgbToLinear(texture2D(texB, uvFit).rgb);
       color = mix(a, b, uMix);
     }
     gl_FragColor = vec4(color * 1.15, 1.0); // exposure (v5: 1.6 → 1.15, floor/ceiling add light)
@@ -80,6 +100,12 @@ interface Pano {
   sunArc: number;
   bandBottom: number;
   bandHeight: number;
+  /** Arc length of the media-capable front ribbon (m) — the cover-fit denominator. */
+  frontArcLen: number;
+  perimeter: number;
+  center: [number, number];
+  startBearing: number;
+  nearWallDistance: number;
 }
 
 export class ScreenPlayer {
@@ -101,30 +127,53 @@ export class ScreenPlayer {
   private stallTimer: ReturnType<typeof setTimeout> | null = null;
   private mediaBase: string;
   private preferVideo: boolean;
+  private gifUrl: string | null;
+  private imgUrl: string | null;
+  private still: Texture | null = null;
+  private gif: GifSource | null = null;
+  private surfaceAspect: number;
+  private media: MediaUniforms;
+  /** Wrap mode: media is a 360 equirect covering the whole wall, not one ribbon (SRS-VID-10). */
+  private wrap: boolean;
 
   constructor(
     surfaces: ScreenSurface[],
     pano: Pano,
     spillLights: PointLight[],
     sky: SkyUniforms,
+    media: MediaUniforms,
     rendition: Rendition,
-    opts: { mediaBase?: string; preferVideo?: boolean } = {},
+    opts: {
+      mediaBase?: string;
+      preferVideo?: boolean;
+      gifUrl?: string | null;
+      imgUrl?: string | null;
+      wrap?: boolean;
+    } = {},
   ) {
+    this.media = media;
+    this.wrap = opts.wrap ?? false;
     this.spillLights = spillLights;
     this.rendition = rendition;
     this.mediaBase = opts.mediaBase ?? '/media';
     this.preferVideo = opts.preferVideo ?? false;
+    this.gifUrl = opts.gifUrl ?? null;
+    this.imgUrl = opts.imgUrl ?? null;
+    this.surfaceAspect = pano.frontArcLen / pano.bandHeight;
 
     let front: ShaderMaterial | null = null;
     for (const s of surfaces) {
       const mat = new ShaderMaterial({
         uniforms: {
           ...sky, // shared IUniform objects (skyCycle → every sky material at once)
+          ...media, // ditto for the 360 media set (wall + floor/ceiling reflection)
           texA: { value: null },
           texB: { value: null },
           uMix: { value: 0 },
           uProcedural: { value: 1 },
           uBandBottom: { value: pano.bandBottom },
+          uUvScale: { value: [1, 1] },
+          uUvOffset: { value: [0, 0] },
         },
         vertexShader: VERT,
         fragmentShader: FRAG,
@@ -148,6 +197,49 @@ export class ScreenPlayer {
   get isProcedural(): boolean {
     return this.procedural;
   }
+  /** '영상'(video) / 'GIF' / '실시간 생성'(procedural) — what the wall is actually showing. */
+  get sourceKind(): 'video' | 'gif' | 'still' | 'procedural' {
+    if (this.mediaLive) return this.still ? 'still' : this.gif ? 'gif' : 'video';
+    if (!this.procedural && this.gif) return 'gif';
+    if (!this.procedural) return 'video';
+    return 'procedural';
+  }
+  /** True once a source is bound to the shared 360 media uniforms. */
+  private get mediaLive(): boolean {
+    return this.wrap && this.media.uMediaTex!.value !== null;
+  }
+  get isWrap(): boolean {
+    return this.wrap;
+  }
+
+  /** Wrap mode binds the source to the SHARED uniforms instead of one ribbon's texture. */
+  private bindWrap(a: Texture, b: Texture | null = null): void {
+    setMediaTexture(this.media, a, b);
+    this.procedural = false;
+  }
+
+  /**
+   * Cover fit: show the media at its own aspect, cropping the overflowing axis, so a 16:9
+   * source is never stretched across the 24m x 8m front ribbon.
+   */
+  private fitMedia(width: number, height: number): void {
+    const u = this.frontMaterial.uniforms;
+    if (width <= 0 || height <= 0) {
+      u.uUvScale!.value = [1, 1];
+      u.uUvOffset!.value = [0, 0];
+      return;
+    }
+    const media = width / height;
+    if (media > this.surfaceAspect) {
+      const sx = this.surfaceAspect / media; // crop left/right
+      u.uUvScale!.value = [sx, 1];
+      u.uUvOffset!.value = [(1 - sx) / 2, 0];
+    } else {
+      const sy = media / this.surfaceAspect; // crop top/bottom
+      u.uUvScale!.value = [1, sy];
+      u.uUvOffset!.value = [0, (1 - sy) / 2];
+    }
+  }
 
   private url(r: Rendition): string {
     return `${this.mediaBase}/sunset_${r}.mp4`;
@@ -168,8 +260,10 @@ export class ScreenPlayer {
     return { el, tex, rvfcId: null };
   }
 
-  /** Video applies to the FRONT ribbon only; the rest of the wall always runs the panorama. */
+  /** Media applies to the FRONT ribbon only; the rest of the wall always runs the panorama. */
   async load(): Promise<boolean> {
+    if (this.imgUrl) return this.loadStill(this.imgUrl);
+    if (this.gifUrl) return this.loadGif(this.gifUrl);
     if (!this.preferVideo) {
       this.enableProcedural();
       return true;
@@ -192,19 +286,123 @@ export class ScreenPlayer {
 
     if (!ok) return this.cascade();
 
-    const u = this.frontMaterial.uniforms;
-    u.texA!.value = a.tex;
-    u.texB!.value = b.tex;
-    u.uProcedural!.value = 0;
+    if (this.wrap) {
+      this.bindWrap(a.tex, b.tex);
+    } else {
+      const u = this.frontMaterial.uniforms;
+      u.texA!.value = a.tex;
+      u.texB!.value = b.tex;
+      u.uProcedural!.value = 0;
+      this.fitMedia(a.el.videoWidth, a.el.videoHeight);
+    }
     this.procedural = false;
     this.active = 0;
     this.mix = 0;
-    u.uMix!.value = 0;
+    this.setSwap(0);
     this.attachRvfc(0);
     this.attachRvfc(1);
     this.watchStall(a.el);
     store.publishSys({ rendition: this.rendition });
     return true;
+  }
+
+  /**
+   * Still panorama (SRS-VID-10): one equirectangular photo on the whole wall. No decode
+   * loop, no loop seam — the cheapest honest way to see how real photography reads in the
+   * hall before committing to a video rendition set.
+   */
+  private async loadStill(url: string): Promise<boolean> {
+    this.disposeSlots();
+    this.disposeGif();
+    try {
+      const res = await fetch(url, { credentials: 'omit' });
+      if (!res.ok) throw new Error(`still ${res.status}`);
+      const bmp = await createImageBitmap(await res.blob());
+      const tex = new Texture(bmp as unknown as HTMLImageElement);
+      tex.colorSpace = SRGBColorSpace; // the shader owns the single sRGB->linear step
+      tex.minFilter = LinearFilter;
+      tex.magFilter = LinearFilter;
+      tex.generateMipmaps = false;
+      tex.needsUpdate = true;
+      this.still = tex;
+      if (this.wrap) this.bindWrap(tex);
+      else {
+        const u = this.frontMaterial.uniforms;
+        u.texA!.value = tex;
+        u.texB!.value = tex;
+        u.uProcedural!.value = 0;
+        this.fitMedia(bmp.width, bmp.height);
+      }
+      this.procedural = false;
+      this.setSwap(0);
+      if (import.meta.env.DEV) {
+        console.info(`[screen] still ${url} — ${bmp.width}x${bmp.height} (${(bmp.width / bmp.height).toFixed(3)}:1)`);
+      }
+      return true;
+    } catch {
+      this.enableProcedural();
+      store.pushNotice({
+        id: 'video-play',
+        kind: 'video-play',
+        severity: 'toast',
+        retryable: false,
+        at: Date.now(),
+        message: '파노라마 이미지를 불러오지 못해 대체 화면으로 상영 중이에요.',
+      });
+      return false;
+    }
+  }
+
+  private disposeStill(): void {
+    this.still?.dispose();
+    this.still = null;
+  }
+
+  /**
+   * GIF mode (SRS-VID-9). No rendition cascade: there is one file, and a failure falls
+   * straight back to the procedural sky rather than hunting for smaller variants.
+   */
+  private async loadGif(url: string): Promise<boolean> {
+    this.disposeSlots();
+    this.disposeGif();
+    try {
+      const gif = await GifSource.create(url);
+      this.gif = gif;
+      if (this.wrap) {
+        this.bindWrap(gif.texture); // one source: the GIF loops on its own frame cycle
+      } else {
+        const u = this.frontMaterial.uniforms;
+        u.texA!.value = gif.texture;
+        u.texB!.value = gif.texture; // one source: the A/B swap has nothing to cross-fade
+        u.uMix!.value = 0;
+        u.uProcedural!.value = 0;
+        this.fitMedia(gif.width, gif.height);
+      }
+      this.mix = 0;
+      this.setSwap(0);
+      this.procedural = false;
+      if (this.playing) gif.play();
+      if (import.meta.env.DEV) {
+        console.info(`[screen] GIF ${url} — ${gif.width}x${gif.height}, ${gif.frames} frames`);
+      }
+      return true;
+    } catch {
+      this.enableProcedural();
+      store.pushNotice({
+        id: 'video-play',
+        kind: 'video-play',
+        severity: 'toast',
+        retryable: false,
+        at: Date.now(),
+        message: 'GIF을 불러오지 못해 대체 화면으로 상영 중이에요.',
+      });
+      return false;
+    }
+  }
+
+  private disposeGif(): void {
+    this.gif?.dispose();
+    this.gif = null;
   }
 
   private async cascade(): Promise<boolean> {
@@ -230,13 +428,24 @@ export class ScreenPlayer {
   }
 
   enableProcedural(): void {
+    this.disposeGif();
+    this.disposeStill();
+    setMediaTexture(this.media, null);
     this.procedural = true;
     this.frontMaterial.uniforms.uProcedural!.value = 1;
   }
 
+  /** Loop crossfade position. Wrap mode drives the shared uniform; front mode drives uMix. */
+  private setSwap(v: number): void {
+    this.mix = v;
+    if (this.wrap) this.media.uMediaSwap!.value = v;
+    else this.frontMaterial.uniforms.uMix!.value = v;
+  }
+
   /** Manual quality change → rendition reload with position carry-over (SRS §6.5). */
   async changeRendition(r: Rendition): Promise<boolean> {
-    if (this.procedural || r === this.rendition || this.blacklist.has(r)) return false;
+    if (this.procedural || this.gif || this.still) return false; // single-source modes
+    if (r === this.rendition || this.blacklist.has(r)) return false;
     const prevTime = this.slots?.[this.active]?.el.currentTime ?? 0;
     const wasPlaying = this.playing;
     this.pause();
@@ -253,6 +462,11 @@ export class ScreenPlayer {
 
   async play(): Promise<void> {
     this.playing = true;
+    if (this.still) return; // nothing to advance
+    if (this.gif) {
+      this.gif.play();
+      return;
+    }
     if (this.procedural || !this.slots) return;
     const a = this.slots[this.active]!;
     try {
@@ -268,17 +482,26 @@ export class ScreenPlayer {
 
   pause(): void {
     this.playing = false;
+    if (this.still) return;
+    if (this.gif) {
+      this.gif.pause();
+      return;
+    }
     if (this.procedural || !this.slots) return;
     for (const s of this.slots) s.el.pause();
   }
 
   onVisible(userPaused: boolean): void {
+    if (this.still) return;
+    if (this.gif) {
+      if (this.playing && !userPaused) this.gif.play();
+      return;
+    }
     if (this.procedural || !this.slots) return;
     const a = this.slots[this.active]!;
     if (a.el.ended || a.el.currentTime >= (a.el.duration || Infinity) - 0.05) {
       a.el.currentTime = 0;
-      this.mix = this.active === 1 ? 1 : 0;
-      this.frontMaterial.uniforms.uMix!.value = this.mix;
+      this.setSwap(this.active === 1 ? 1 : 0);
       this.swapping = false;
     }
     if (this.playing && !userPaused && a.el.paused) void a.el.play();
@@ -328,8 +551,18 @@ export class ScreenPlayer {
    * emitted colour (procedural mode); video mode samples the frame instead.
    */
   update(dt: number, skyAverage: [number, number, number]): void {
+    if (this.wrap) rampMediaMix(this.media, this.mediaLive ? 1 : 0, dt);
     if (this.procedural) {
       this.applySpill(skyAverage[0], skyAverage[1], skyAverage[2]);
+      return;
+    }
+    if (this.still) {
+      this.applySpill(skyAverage[0], skyAverage[1], skyAverage[2]);
+      return;
+    }
+    if (this.gif) {
+      this.gif.update(dt); // texture upload is gated inside GifSource (SRS-VID-3)
+      this.sampleAverageColor();
       return;
     }
     if (!this.slots) return;
@@ -344,8 +577,7 @@ export class ScreenPlayer {
 
     if (this.swapping) {
       const dir = this.active === 0 ? 1 : -1;
-      this.mix = Math.min(1, Math.max(0, this.mix + (dt / SWAP_RAMP_S) * dir));
-      this.frontMaterial.uniforms.uMix!.value = this.mix;
+      this.setSwap(Math.min(1, Math.max(0, this.mix + (dt / SWAP_RAMP_S) * dir)));
       const done = this.active === 0 ? this.mix >= 1 : this.mix <= 0;
       if (done) this.completeSwap();
     }
@@ -368,8 +600,7 @@ export class ScreenPlayer {
 
   onPause(): void {
     if (this.swapping) {
-      this.mix = this.active === 0 ? 1 : 0;
-      this.frontMaterial.uniforms.uMix!.value = this.mix;
+      this.setSwap(this.active === 0 ? 1 : 0);
       this.completeSwap();
     }
     this.pause();
@@ -399,14 +630,21 @@ export class ScreenPlayer {
 
   private sampleAverageColor(): void {
     const now = performance.now();
-    if (now - this.lastAvgAt < AVG_COLOR_INTERVAL_MS || !this.slots) return;
+    if (now - this.lastAvgAt < AVG_COLOR_INTERVAL_MS) return;
+    let source: CanvasImageSource | null = null;
+    if (this.gif) {
+      source = this.gif.sampleSource;
+    } else if (this.slots) {
+      const el = this.slots[this.active]!.el;
+      if (el.readyState < 2) return;
+      source = el;
+    }
+    if (!source) return;
     this.lastAvgAt = now;
-    const el = this.slots[this.active]!.el;
-    if (el.readyState < 2) return;
     try {
       const g = this.avgCanvas.getContext('2d', { willReadFrequently: true });
       if (!g) return;
-      g.drawImage(el, 0, 0, 2, 2);
+      g.drawImage(source, 0, 0, 2, 2);
       const d = g.getImageData(0, 0, 2, 2).data;
       let r = 0;
       let gr = 0;

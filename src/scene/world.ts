@@ -56,6 +56,7 @@ import {
 } from './hallGeometry';
 import { createReflectiveMaterial } from './surfaces';
 import type { SkyUniforms } from './skyShader';
+import type { MediaUniforms } from './panoMedia';
 
 export { BAND_BOTTOM, BAND_TOP, HALL_A, HALL_B, HALL_CEILING } from './hallGeometry';
 
@@ -120,7 +121,8 @@ function shade(hex: string, delta: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-export const CORRIDOR_LENGTH = 24;
+// 24 -> 12 (사용자 결정 2026-09-11: 홀까지 걸어가는 시간이 길다). 2.0 m/s 기준 ≈5초.
+export const CORRIDOR_LENGTH = 12;
 export const CORRIDOR_WIDTH = 4;
 export const CORRIDOR_HEIGHT = 4.2;
 export const EYE_HEIGHT = 1.65;
@@ -160,7 +162,7 @@ export interface World {
   obstacles: Box3[];
   screenMesh: Mesh;
   screenSurfaces: ScreenSurface[];
-  panorama: { panoLen: number; sunArc: number; bandBottom: number; bandHeight: number };
+  panorama: { panoLen: number; sunArc: number; bandBottom: number; bandHeight: number; frontArcLen: number; perimeter: number; center: [number, number]; startBearing: number; nearWallDistance: number };
   spillLights: PointLight[];
   audioAnchors: AudioAnchors;
   /** Reflective floor + ceiling share the sky uniforms with the screen. */
@@ -174,7 +176,7 @@ export interface World {
   update(dt: number): void;
 }
 
-export function buildWorld(scene: Scene, sky: SkyUniforms): World {
+export function buildWorld(scene: Scene, sky: SkyUniforms, media: MediaUniforms): World {
   const root = new Group();
   root.name = 'world';
 
@@ -300,6 +302,7 @@ export function buildWorld(scene: Scene, sky: SkyUniforms): World {
   const startAngle = thetaAtClockwiseArc(table, 0);
   const commonRefl = {
     sky,
+    media,
     arcLut,
     center: [cx, cz] as [number, number],
     axes: [HALL_A, HALL_B] as [number, number],
@@ -322,7 +325,18 @@ export function buildWorld(scene: Scene, sky: SkyUniforms): World {
   ceiling.name = 'CEILING';
   root.add(ceiling);
   // Bridge floor under the door so the corridor tiles meet the hall disc.
-  addBox(DOOR_HALF_WIDTH * 2 + 1.6, 0.3, 2.4, 0, -0.15, hallZ0 + 0.2, corrFloorMat);
+  // It must not be COPLANAR with either neighbour: the corridor floor (top y=0, z∈[−L,0])
+  // and the hall disc (y=0) both reach this threshold, and three surfaces sharing y=0
+  // produced the flickering black/tile stripes reported 2026-09-11. So the bridge now
+  // (a) starts exactly at the door line instead of overlapping the corridor slab and
+  // (b) sits 1 cm lower, letting the hall disc win wherever they overlap.
+  const BRIDGE_DEPTH = 1.6;
+  const BRIDGE_DROP = 0.01;
+  addBox(
+    DOOR_HALF_WIDTH * 2 + 1.6, 0.3, BRIDGE_DEPTH,
+    0, -0.15 - BRIDGE_DROP, hallZ0 - BRIDGE_DEPTH / 2,
+    corrFloorMat,
+  );
 
   // Viewing benches — low, centred, never between the viewer and the wall.
   for (const [bx, bz] of [[-5.5, cz + 1.5], [5.5, cz + 1.5], [0, cz - 3]] as Array<[number, number]>) {
@@ -408,9 +422,12 @@ export function buildWorld(scene: Scene, sky: SkyUniforms): World {
   const anchors: WorldAnchors = {
     spawnCorridor: new Vector3(0, EYE_HEIGHT, -2),
     spawnHall: new Vector3(0, EYE_HEIGHT, hallZ0 - 3.5),
+    // The arrival trigger must sit INSIDE `boundsViewing`. It used to reach 0.5m short of
+    // the door line while boundsViewing starts at it, so every on-foot arrival tripped the
+    // "you are not in the hall" relocation and jumped the viewer 4m forward (2026-09-11).
     triggerHallEntry: new Box3(
-      new Vector3(-DOOR_HALF_WIDTH, 0, hallZ0 - 2),
-      new Vector3(DOOR_HALF_WIDTH, 3, hallZ0 + 0.5),
+      new Vector3(-DOOR_HALF_WIDTH, 0, hallZ0 - 2.5),
+      new Vector3(DOOR_HALF_WIDTH, 3, hallZ0 - 0.3),
     ),
     boundsViewing,
     viewingMaxDistance: HALL_A * 2,
@@ -427,7 +444,15 @@ export function buildWorld(scene: Scene, sky: SkyUniforms): World {
     obstacles,
     screenMesh,
     screenSurfaces,
-    panorama: { panoLen, sunArc, bandBottom: BAND_BOTTOM, bandHeight: bandH },
+    panorama: {
+      panoLen, sunArc, bandBottom: BAND_BOTTOM, bandHeight: bandH,
+      frontArcLen: FRONT_ARC_LEN, perimeter: table.perimeter,
+      center: [cx, cz],
+      // Bearing (not the parametric angle) of the door's right edge seen from the centre —
+      // the angular mapping's zero. For x = A·cosθ, z = B·sinθ the two differ on an ellipse.
+      startBearing: Math.atan2(HALL_B * Math.sin(startAngle), HALL_A * Math.cos(startAngle)),
+      nearWallDistance: Math.min(HALL_A, HALL_B),
+    },
     spillLights,
     audioAnchors,
     reflectiveMaterials: [floorMat, ceilMat],

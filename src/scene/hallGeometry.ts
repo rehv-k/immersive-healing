@@ -7,10 +7,13 @@
 
 export const HALL_A = 15; // semi-axis along x (m)
 export const HALL_B = 11; // semi-axis along z (m)
-export const HALL_CEILING = 8.0;
+export const HALL_CEILING = 9.4;
 export const DOOR_HALF_WIDTH = 2.4; // entrance gap half-width at the +z apex
-export const BAND_BOTTOM = 0.25; // screen band (m) — floor-to-ceiling feel, 6m tall ≈ 13:1
-export const BAND_TOP = 6.25;
+// Band raised 2026-09-11 (사용자: "화면의 높이는 좀 더 높아야한다"): 6.0m -> 8.0m tall.
+// A taller band also shrinks the near-field zone where a floor reflection ray leaves the
+// screen above its top edge — the dark arc reported in the same session.
+export const BAND_BOTTOM = 0.2; // screen band (m) — floor-to-ceiling feel, 8m tall ≈ 9.6:1
+export const BAND_TOP = 8.2;
 
 const TABLE_N = 1440; // arc-length samples over a full turn (0.25° steps)
 

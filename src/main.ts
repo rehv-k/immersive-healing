@@ -17,6 +17,7 @@ import { chooseRendition } from './scene/renditionSelect';
 import { PRESET_DPR_CAP } from './scene/adaptation';
 import { skyParams } from './scene/skyCycle';
 import { applySkyParams, createSkyUniforms } from './scene/skyShader';
+import { bandVRange, createMediaUniforms } from './scene/panoMedia';
 import { AudioGraph } from './audio/graph';
 import { Ambience } from './audio/ambience';
 import { gainsForElevation } from './audio/phaseMix';
@@ -73,7 +74,54 @@ function boot(): void {
   );
 
   const sky = createSkyUniforms(0, 0, 0); // metrics are filled in by buildWorld
-  const world = buildWorld(scene, sky);
+  // 360 media uniforms are shared by the wall and the floor/ceiling reflection (SRS-VID-10).
+  // The perimeter is patched in right after buildWorld, which owns the ellipse maths.
+  // `?map=arc` restores the procedural sky's arc-length mapping for comparison; the default
+  // is bearing mapping, which is the geometrically correct one for a photographic 360 seen
+  // from the middle of an ELLIPSE (조사 L §4.7).
+  const angular = new URLSearchParams(location.search).get('map') !== 'arc';
+  // `?vrange=a,b` declares that the source is a BAND-CROPPED master covering only those
+  // equirect rows (조사 L §4.1). Default: a full 2:1 equirect.
+  const vrangeParam = new URLSearchParams(location.search).get('vrange');
+  const vRange = vrangeParam
+    ? (vrangeParam.split(',').map(Number).slice(0, 2) as [number, number])
+    : undefined;
+  // `?gain=` trims media exposure: tonemapped HDR masters land much darker than the
+  // procedural sky, and every source differs. 1 = as encoded.
+  const gainParam = Number(new URLSearchParams(location.search).get('gain'));
+  // `?flow=`: animate the water of a STILL panorama (1 = default strength, 0 = frozen).
+  // Real footage moves on its own, so this defaults to on only for `?img=`.
+  const flowRaw = new URLSearchParams(location.search).get('flow');
+  const flowParam = flowRaw === null ? null : Number(flowRaw);
+  const media = createMediaUniforms({
+    perimeter: 1,
+    eyeY: EYE_HEIGHT,
+    wallDistance: 13,
+    center: [0, 0],
+    startBearing: 0,
+    angular,
+    ...(vRange && vRange.every(Number.isFinite) ? { vRange } : {}),
+    ...(Number.isFinite(gainParam) && gainParam > 0 ? { gain: gainParam } : {}),
+    ...(flowParam !== null && Number.isFinite(flowParam) ? { flow: flowParam } : {}),
+  });
+  const world = buildWorld(scene, sky, media);
+  media.uMediaPerim!.value = world.panorama.perimeter;
+  media.uMediaCenter!.value = world.panorama.center;
+  media.uMediaStart!.value = world.panorama.startBearing;
+  media.uMediaDist!.value = world.panorama.nearWallDistance;
+  if (import.meta.env.DEV) {
+    const [v0, v1] = bandVRange({
+      perimeter: world.panorama.perimeter,
+      eyeY: EYE_HEIGHT,
+      wallDistance: world.panorama.nearWallDistance,
+      center: world.panorama.center,
+      startBearing: world.panorama.startBearing,
+      bandBottom: world.panorama.bandBottom,
+      bandTop: world.panorama.bandBottom + world.panorama.bandHeight,
+    });
+    console.info(`[media] mapping=${angular ? 'angular(bearing)' : 'arc'} · band equirect v ` +
+      `range = ${v0.toFixed(4)}..${v1.toFixed(4)} (${((v1 - v0) * 100).toFixed(1)}% of full height)`);
+  }
   const player = new Player(camera);
   player.setWalkables(world.walkRegions, world.obstacles);
   player.teleport(world.anchors.spawnCorridor.clone().setY(EYE_HEIGHT), 0);
@@ -103,8 +151,23 @@ function boot(): void {
     // Reflection cost scales with the preset: Low = single tap, no ceiling reflection.
     world.setReflectionQuality(preset === 'high' ? 3 : 1, preset !== 'low');
   });
-  const screen = new ScreenPlayer(world.screenSurfaces, world.panorama, world.spillLights, sky, '1080p', {
-    preferVideo: new URLSearchParams(location.search).has('video'),
+  // Media source flags (dev/preview): `?video` plays the rendition set, `?gif` (optionally
+  // `?gif=<url>`) plays one animated GIF on the front ribbon — the quick "이게 영상으로
+  // 보이나" check requested 2026-09-11. Neither is set in the shipped experience, which
+  // runs the procedural sky cycle.
+  const params = new URLSearchParams(location.search);
+  const gifParam = params.get('gif');
+  const gifUrl = params.has('gif') ? (gifParam && gifParam.length > 0 ? gifParam : '/media/sunset.gif') : null;
+  const imgParam = params.get('img');
+  const imgUrl = params.has('img') ? (imgParam && imgParam.length > 0 ? imgParam : '/media/panorama.jpg') : null;
+  if (imgUrl !== null && flowParam === null) media.uMediaFlow!.value = 1; // stills move by default
+  const screen = new ScreenPlayer(world.screenSurfaces, world.panorama, world.spillLights, sky, media, '1080p', {
+    preferVideo: params.has('video'),
+    gifUrl,
+    imgUrl,
+    // `?wrap`: treat the source as a 360 equirectangular panorama covering the WHOLE wall
+    // (조사 L, B1) instead of a flat clip on the front ribbon only.
+    wrap: params.has('wrap'),
   });
 
   const pickRendition = () =>
@@ -213,8 +276,9 @@ function boot(): void {
     });
   });
   sceneMachine.onEnter('hall', (from) => {
-    const p = player.position;
-    if (!world.anchors.boundsViewing.containsPoint(p)) {
+    // Position rule (SRS-SCN-24): only a viewer who did NOT walk in is placed. Relocating
+    // someone mid-stride reads as a hard cut — the reported "입장하는 순간 끊기는 느낌".
+    if (from === 'gate' || !world.anchors.boundsViewing.containsPoint(player.position)) {
       player.teleport(world.anchors.spawnHall.clone().setY(EYE_HEIGHT), 0);
     }
     if (from === 'gate') {
@@ -425,6 +489,9 @@ function boot(): void {
       world.setBreath(0, 0, 0);
     }
 
+    // Still panoramas get their water animated on the shader clock (SRS-VID-10); real
+    // footage moves by itself and leaves uMediaFlow at 0.
+    media.uMediaTime!.value = motionTime;
     screen.update(dt, sp.average); // video ramp/gating/spill (uploads merge into render below)
     world.update(dt); // dust motes drift
     qc.tick(dt, app);

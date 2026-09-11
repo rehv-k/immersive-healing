@@ -1,6 +1,6 @@
 # TC 커버리지 리포트 (자동 생성 — 손 편집 금지)
 
-> 생성: `node scripts/generate-report.mjs` · 2026-09-10T10:54:28.716Z
+> 생성: `node scripts/generate-report.mjs` · 2026-09-11T08:42:31.639Z
 > 이 리포트는 **특정 실행의 evidence**다 — 요구·시험의 권위는 `docs/tc/` TC 문서다.
 > 미커버에는 다른 레인(검사·시연·분석)이 포함된다 — 각 TC 문서 §3의 검증 방법 열 참조.
 
