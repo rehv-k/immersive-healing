@@ -36,6 +36,10 @@ export const MEDIA_UNIFORM_DECL = /* glsl */ `
   uniform float uMediaGain;    // per-source exposure trim: real footage varies a lot
   uniform float uMediaFlow;    // water animation amount on a STILL panorama (0 = off)
   uniform float uMediaTime;    // seconds, for uMediaFlow
+  uniform float uMediaVFov;    // 1 = geometrically true; >1 squeezes more sky/sea into the band
+  uniform float uMediaBandV;   // 1 = source is a BAND image: map its height straight to the wall
+  uniform float uMediaBandBottom;
+  uniform float uMediaBandH;
 `;
 
 export const MEDIA_FUNCTIONS = /* glsl */ `
@@ -48,9 +52,23 @@ export const MEDIA_FUNCTIONS = /* glsl */ `
     if (uMediaAngular > 0.5) {
       u = fract((uMediaStart - atan(rel.y, rel.x)) / 6.28318530718);
     }
+    // Band-image mode: the source was authored for THIS wall (9.68:1, the 국중박 pipeline),
+    // so its height maps straight onto the band — nothing is cropped and every pixel is used.
+    if (uMediaBandV > 0.5) {
+      // vb runs 0 at the wall's bottom edge. With flipY, texture v=0 is the image's BOTTOM
+      // row — which is exactly the row that belongs at the wall's bottom. No inversion here
+      // (unlike the equirect branch, whose v counts down from the zenith).
+      float vb = (P.y - uMediaBandBottom) / uMediaBandH;
+      return vec2(u, clamp(vb, 0.0, 1.0));
+    }
     float dist = max(0.5, length(rel)); // true distance to THIS wall point
     if (uMediaAngular < 0.5) dist = uMediaDist;
     float elev = atan((P.y - uMediaEyeY) / dist); // radians, + is up
+    // The band only spans ~38 deg of the sphere, so a geometrically true mapping shows a
+    // thin slice around the horizon and crops the dramatic sky. uMediaVFov > 1 pulls more
+    // of the panorama into the same band — no longer true-to-life, but a deliberate
+    // panoramic-theatre squeeze rather than a bug.
+    elev *= uMediaVFov;
     float v = 0.5 - elev / 3.14159265359; // equirect: v=0 is zenith, 1 is nadir
 
     // Living water on a still panorama. In an equirect the horizon is exactly the equator
@@ -72,7 +90,12 @@ export const MEDIA_FUNCTIONS = /* glsl */ `
     // A band-cropped master stores only part of that range; remap into the file's own rows
     // so pre-cropping (the delivery optimisation in 조사 L §4.1) needs no shader change.
     v = (v - uMediaVRange.x) / max(1e-5, uMediaVRange.y - uMediaVRange.x);
-    return vec2(u, clamp(v, 0.0, 1.0));
+
+    // Everything above is in EQUIRECT space (v=0 is the image's top row). three uploads
+    // textures with flipY, so texture v=0 is the image's BOTTOM row — flip once, here, at
+    // the very end. Every media source must therefore use the same flipY convention;
+    // ImageBitmap is created with imageOrientation:'flipY' for exactly this reason.
+    return vec2(u, 1.0 - clamp(v, 0.0, 1.0));
   }
 
   // Reflection sampler: slot A only. During the 0.25s loop crossfade the floor lags the
@@ -106,6 +129,12 @@ export interface MediaOptions {
   gain?: number;
   /** Water animation amount for a STILL panorama; 0 (default) for real footage. */
   flow?: number;
+  /** Vertical squeeze: 1 = true to life, >1 fits more of the panorama into the band. */
+  vfov?: number;
+  /** Source is a band image authored at the wall's own aspect, not a 2:1 equirect. */
+  bandImage?: boolean;
+  bandBottom?: number;
+  bandHeight?: number;
 }
 
 export function createMediaUniforms(o: MediaOptions): MediaUniforms {
@@ -124,6 +153,10 @@ export function createMediaUniforms(o: MediaOptions): MediaUniforms {
     uMediaGain: { value: o.gain ?? 1 },
     uMediaFlow: { value: o.flow ?? 0 },
     uMediaTime: { value: 0 },
+    uMediaVFov: { value: o.vfov ?? 1 },
+    uMediaBandV: { value: o.bandImage ? 1 : 0 },
+    uMediaBandBottom: { value: o.bandBottom ?? 0 },
+    uMediaBandH: { value: o.bandHeight ?? 1 },
   };
 }
 

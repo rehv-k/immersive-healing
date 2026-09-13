@@ -9,6 +9,7 @@
 
 import {
   LinearFilter,
+  LinearMipmapLinearFilter,
   Mesh,
   NoColorSpace,
   PointLight,
@@ -128,6 +129,9 @@ export class ScreenPlayer {
   private mediaBase: string;
   private preferVideo: boolean;
   private gifUrl: string | null;
+  /** `?video=<url>`: one explicit file instead of the rendition set (no cascade). */
+  private videoUrl: string | null;
+  private maxAnisotropy: number;
   private imgUrl: string | null;
   private still: Texture | null = null;
   private gif: GifSource | null = null;
@@ -148,6 +152,9 @@ export class ScreenPlayer {
       preferVideo?: boolean;
       gifUrl?: string | null;
       imgUrl?: string | null;
+      videoUrl?: string | null;
+      /** renderer.capabilities.getMaxAnisotropy() — the wall is seen at grazing angles. */
+      maxAnisotropy?: number;
       wrap?: boolean;
     } = {},
   ) {
@@ -158,6 +165,8 @@ export class ScreenPlayer {
     this.mediaBase = opts.mediaBase ?? '/media';
     this.preferVideo = opts.preferVideo ?? false;
     this.gifUrl = opts.gifUrl ?? null;
+    this.videoUrl = opts.videoUrl ?? null;
+    this.maxAnisotropy = Math.max(1, opts.maxAnisotropy ?? 1);
     this.imgUrl = opts.imgUrl ?? null;
     this.surfaceAspect = pano.frontArcLen / pano.bandHeight;
 
@@ -256,7 +265,10 @@ export class ScreenPlayer {
     tex.colorSpace = NoColorSpace;
     tex.minFilter = LinearFilter;
     tex.magFilter = LinearFilter;
+    // No mipmaps for video: regenerating them every frame costs more than the aliasing
+    // they save. Anisotropy still helps on the oblique side walls.
     tex.generateMipmaps = false;
+    tex.anisotropy = this.maxAnisotropy;
     return { el, tex, rvfcId: null };
   }
 
@@ -272,7 +284,7 @@ export class ScreenPlayer {
     const a = this.makeSlot();
     const b = this.makeSlot();
     this.slots = [a, b];
-    const src = this.url(this.rendition);
+    const src = this.videoUrl ?? this.url(this.rendition);
     a.el.src = src;
     b.el.src = src;
 
@@ -284,7 +296,8 @@ export class ScreenPlayer {
       b.el.load();
     });
 
-    if (!ok) return this.cascade();
+    // An explicit file has no smaller sibling to fall back to — go straight to procedural.
+    if (!ok) return this.videoUrl ? this.cascadeGiveUp() : this.cascade();
 
     if (this.wrap) {
       this.bindWrap(a.tex, b.tex);
@@ -317,12 +330,18 @@ export class ScreenPlayer {
     try {
       const res = await fetch(url, { credentials: 'omit' });
       if (!res.ok) throw new Error(`still ${res.status}`);
-      const bmp = await createImageBitmap(await res.blob());
+      // flipY so a still matches the VideoTexture/CanvasTexture upload convention that
+      // panoMediaUv assumes; without it stills and videos map upside down relative to
+      // each other (caught 2026-09-13 on the first real 360 clip).
+      const bmp = await createImageBitmap(await res.blob(), { imageOrientation: 'flipY' });
       const tex = new Texture(bmp as unknown as HTMLImageElement);
       tex.colorSpace = SRGBColorSpace; // the shader owns the single sRGB->linear step
-      tex.minFilter = LinearFilter;
+      // A still is uploaded once, so mipmaps + anisotropy are nearly free here and remove
+      // the shimmer on the far (15m) side walls and in the floor reflection.
+      tex.minFilter = LinearMipmapLinearFilter;
       tex.magFilter = LinearFilter;
-      tex.generateMipmaps = false;
+      tex.generateMipmaps = true;
+      tex.anisotropy = this.maxAnisotropy;
       tex.needsUpdate = true;
       this.still = tex;
       if (this.wrap) this.bindWrap(tex);
@@ -366,7 +385,7 @@ export class ScreenPlayer {
     this.disposeSlots();
     this.disposeGif();
     try {
-      const gif = await GifSource.create(url);
+      const gif = await GifSource.create(url, undefined, this.maxAnisotropy);
       this.gif = gif;
       if (this.wrap) {
         this.bindWrap(gif.texture); // one source: the GIF loops on its own frame cycle
@@ -403,6 +422,19 @@ export class ScreenPlayer {
   private disposeGif(): void {
     this.gif?.dispose();
     this.gif = null;
+  }
+
+  private cascadeGiveUp(): boolean {
+    this.enableProcedural();
+    store.pushNotice({
+      id: 'video-play',
+      kind: 'video-play',
+      severity: 'toast',
+      retryable: false,
+      at: Date.now(),
+      message: '영상을 불러오지 못해 대체 화면으로 상영 중이에요.',
+    });
+    return false;
   }
 
   private async cascade(): Promise<boolean> {

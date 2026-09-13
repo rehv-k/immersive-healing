@@ -79,7 +79,10 @@ function boot(): void {
   // `?map=arc` restores the procedural sky's arc-length mapping for comparison; the default
   // is bearing mapping, which is the geometrically correct one for a photographic 360 seen
   // from the middle of an ELLIPSE (조사 L §4.7).
-  const angular = new URLSearchParams(location.search).get('map') !== 'arc';
+  // `?map=arc` restores arc-length mapping; `?map=band` declares the source is a BAND image
+  // authored at the wall's own 9.68:1 aspect (nothing cropped — 조사 L 경로 B).
+  const mapMode = new URLSearchParams(location.search).get('map');
+  const angular = mapMode !== 'arc' && mapMode !== 'band';
   // `?vrange=a,b` declares that the source is a BAND-CROPPED master covering only those
   // equirect rows (조사 L §4.1). Default: a full 2:1 equirect.
   const vrangeParam = new URLSearchParams(location.search).get('vrange');
@@ -93,6 +96,9 @@ function boot(): void {
   // Real footage moves on its own, so this defaults to on only for `?img=`.
   const flowRaw = new URLSearchParams(location.search).get('flow');
   const flowParam = flowRaw === null ? null : Number(flowRaw);
+  // `?vfov=`: 1 = geometrically true (a thin slice around the horizon), >1 squeezes more of
+  // the panorama into the same band — the trade the user judges by eye.
+  const vfovParam = Number(new URLSearchParams(location.search).get('vfov'));
   const media = createMediaUniforms({
     perimeter: 1,
     eyeY: EYE_HEIGHT,
@@ -103,12 +109,16 @@ function boot(): void {
     ...(vRange && vRange.every(Number.isFinite) ? { vRange } : {}),
     ...(Number.isFinite(gainParam) && gainParam > 0 ? { gain: gainParam } : {}),
     ...(flowParam !== null && Number.isFinite(flowParam) ? { flow: flowParam } : {}),
+    ...(Number.isFinite(vfovParam) && vfovParam > 0 ? { vfov: vfovParam } : {}),
+    ...(mapMode === 'band' ? { bandImage: true } : {}),
   });
   const world = buildWorld(scene, sky, media);
   media.uMediaPerim!.value = world.panorama.perimeter;
   media.uMediaCenter!.value = world.panorama.center;
   media.uMediaStart!.value = world.panorama.startBearing;
   media.uMediaDist!.value = world.panorama.nearWallDistance;
+  media.uMediaBandBottom!.value = world.panorama.bandBottom;
+  media.uMediaBandH!.value = world.panorama.bandHeight;
   if (import.meta.env.DEV) {
     const [v0, v1] = bandVRange({
       perimeter: world.panorama.perimeter,
@@ -158,11 +168,15 @@ function boot(): void {
   const params = new URLSearchParams(location.search);
   const gifParam = params.get('gif');
   const gifUrl = params.has('gif') ? (gifParam && gifParam.length > 0 ? gifParam : '/media/sunset.gif') : null;
+  const videoParam = params.get('video');
+  const videoUrl = videoParam && videoParam.length > 0 ? videoParam : null;
   const imgParam = params.get('img');
   const imgUrl = params.has('img') ? (imgParam && imgParam.length > 0 ? imgParam : '/media/panorama.jpg') : null;
   if (imgUrl !== null && flowParam === null) media.uMediaFlow!.value = 1; // stills move by default
   const screen = new ScreenPlayer(world.screenSurfaces, world.panorama, world.spillLights, sky, media, '1080p', {
     preferVideo: params.has('video'),
+    videoUrl,
+    maxAnisotropy: bundle.renderer.capabilities.getMaxAnisotropy(),
     gifUrl,
     imgUrl,
     // `?wrap`: treat the source as a 360 equirectangular panorama covering the WHOLE wall

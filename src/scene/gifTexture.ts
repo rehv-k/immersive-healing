@@ -49,7 +49,7 @@ export class GifSource {
   }
 
   /** Fetch + open the GIF. Rejects if unsupported, missing, or not actually animated media. */
-  static async create(url: string, signal?: AbortSignal): Promise<GifSource> {
+  static async create(url: string, signal?: AbortSignal, anisotropy = 1): Promise<GifSource> {
     if (!GifSource.isSupported()) throw new Error('ImageDecoder unavailable');
     const res = await fetch(url, { signal, credentials: 'omit' });
     if (!res.ok) throw new Error(`gif ${res.status}`);
@@ -64,11 +64,11 @@ export class GifSource {
       throw new Error('gif has no frames');
     }
     const first = await decoder.decode({ frameIndex: 0 });
-    const src = new GifSource(decoder, track.frameCount, first);
+    const src = new GifSource(decoder, track.frameCount, first, anisotropy);
     return src;
   }
 
-  private constructor(decoder: Decoder, frameCount: number, first: DecodedFrame) {
+  private constructor(decoder: Decoder, frameCount: number, first: DecodedFrame, anisotropy = 1) {
     this.decoder = decoder;
     this.frameCount = frameCount;
     this.canvas = document.createElement('canvas');
@@ -82,6 +82,7 @@ export class GifSource {
     this.texture.minFilter = LinearFilter;
     this.texture.magFilter = LinearFilter;
     this.texture.generateMipmaps = false;
+    this.texture.anisotropy = anisotropy;
     this.present(0, first);
   }
 
